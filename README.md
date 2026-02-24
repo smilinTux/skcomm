@@ -408,6 +408,14 @@ That text file was the first SKComm transport. This project is the system that g
 
 ---
 
+## Documentation
+
+| Document | Description |
+|----------|-------------|
+| [Developer Quickstart](../docs/QUICKSTART.md) | Install + first sovereign agent in 5 minutes |
+| [API Reference](../docs/API.md) | Full API docs for SKComm and all core packages |
+| [PMA Integration](../docs/PMA_INTEGRATION.md) | Legal sovereignty layer (Fiducia Communitatis) |
+
 ## License
 
 **GPL-3.0-or-later** — Free as in freedom. Communication is a right, not a privilege.
