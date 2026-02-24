@@ -1,0 +1,26 @@
+feat(skcomm): full source + 11 new modules from transport-builder session
+
+Core library (pre-existing, first commit to git):
+- transport.py: pluggable Transport ABC with health checks
+- models.py: MessageEnvelope, RoutingConfig, MessageType (+ HEARTBEAT)
+- router.py: multi-mode routing with failover/broadcast/stealth/speed
+- core.py: SKComm engine with send/receive/status
+- config.py: YAML config loader, cli.py: Click CLI
+
+Transports:
+- transports/syncthing.py: P2P file-based via Syncthing mesh
+- transports/file.py: local filesystem message drops
+- transports/nostr.py: NIP-17/NIP-44/NIP-59 encrypted DMs over Nostr relays
+
+New modules (transport-builder, 11 tasks):
+- discovery.py: peer auto-discovery (Syncthing + file + mDNS)
+- heartbeat.py: file-based alive/dead detection
+- marketplace.py: SKWorld skill publish/search via Nostr kind 30078
+- queue.py: persistent message queue with retry backoff and TTL expiry
+- compression.py: gzip/zstd envelope compression
+- ack.py: delivery acknowledgment tracker with timeout detection
+- metrics.py: per-transport delivery stats and latency tracking
+- ratelimit.py: token bucket throttling per transport and per peer
+
+CLI: discover, heartbeat, skill, queue, stats commands
+Tests: 386 passing across 18 test files
