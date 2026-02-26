@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Optional
 
 from .config import SKCommConfig, load_config
+from .discovery import PeerStore
 from .models import (
     MessageEnvelope,
     MessageMetadata,
@@ -155,6 +156,8 @@ class SKComm:
         Returns:
             DeliveryReport with attempt results.
         """
+        preferred_transports = self._resolve_peer_transports(recipient)
+
         envelope = MessageEnvelope(
             sender=self._identity,
             recipient=recipient,
@@ -168,6 +171,7 @@ class SKComm:
                 retry_backoff=self._config.retry_backoff,
                 ttl=self._config.ttl,
                 ack_requested=self._config.ack,
+                preferred_transports=preferred_transports,
             ),
             metadata=MessageMetadata(
                 thread_id=thread_id,
@@ -196,6 +200,27 @@ class SKComm:
             self._ack_tracker.track(envelope)
 
         return report
+
+    def _resolve_peer_transports(self, recipient: str) -> list[str]:
+        """Look up the preferred transports for a recipient from the peer store.
+
+        Checks ~/.skcomm/peers/<name>.yml for a list of configured transports.
+        Returns transport names the router should prefer for this recipient.
+
+        Args:
+            recipient: Agent name or fingerprint to resolve.
+
+        Returns:
+            list[str]: Preferred transport names (may be empty).
+        """
+        try:
+            store = PeerStore()
+            peer = store.get(recipient)
+            if peer and peer.transports:
+                return [t.transport for t in peer.transports]
+        except Exception as exc:
+            logger.debug("Peer store lookup failed for '%s': %s", recipient, exc)
+        return []
 
     def send_envelope(self, envelope: MessageEnvelope) -> DeliveryReport:
         """Send a pre-built envelope directly.

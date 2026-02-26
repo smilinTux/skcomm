@@ -193,14 +193,15 @@ class TestKeyStore:
         store = KeyStore()
         assert store.get_public_key("nobody") is None
 
-    def test_known_peers_list(self, keypair, peer_keypair):
+    def test_known_peers_list(self, keypair, peer_keypair, tmp_path):
         """known_peers returns all added peer names."""
         from skcomm.crypto import KeyStore
 
         _, pub1, _ = keypair
         _, pub2, _ = peer_keypair
 
-        store = KeyStore()
+        # Reason: use isolated tmp dir to avoid picking up real ~/.skcomm/peers entries
+        store = KeyStore(peers_dir=tmp_path)
         store.add_key("opus", pub1)
         store.add_key("lumina", pub2)
 

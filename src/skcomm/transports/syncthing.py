@@ -213,7 +213,9 @@ class SyncthingTransport(Transport):
     def health_check(self) -> HealthStatus:
         """Check the health of the Syncthing transport.
 
-        Verifies directory accessibility and reports any issues.
+        Verifies directory accessibility, checks disk space, and reports
+        any issues. Warns when free space is low enough to trigger
+        Syncthing's minDiskFree threshold (default 1% of volume).
 
         Returns:
             HealthStatus with current state.
@@ -240,17 +242,28 @@ class SyncthingTransport(Transport):
                 for p in inbox_peers
             )
 
+            disk_warning = self._check_disk_space()
+            status = TransportStatus.AVAILABLE
+            error = None
+            if disk_warning:
+                status = TransportStatus.DEGRADED
+                error = disk_warning
+                logger.warning("Disk space low: %s", disk_warning)
+
             details = {
                 "comms_root": str(self._root),
                 "outbox_peers": outbox_peers,
                 "inbox_peers": inbox_peers,
                 "pending_inbox": inbox_count,
             }
+            if disk_warning:
+                details["disk_warning"] = disk_warning
 
             return HealthStatus(
                 transport_name=self.name,
-                status=TransportStatus.AVAILABLE,
+                status=status,
                 latency_ms=latency,
+                error=error,
                 details=details,
             )
 
@@ -263,6 +276,38 @@ class SyncthingTransport(Transport):
                 error=str(exc),
                 details=details,
             )
+
+    def _check_disk_space(self) -> Optional[str]:
+        """Check if disk space is low enough to block Syncthing sync.
+
+        Syncthing's default minDiskFree is 1% of the volume. On large
+        drives (e.g. 2TB) this means ~20GB free is required. If the
+        drive is near capacity, Syncthing silently refuses to sync new
+        files — no UI warning, just errors in the REST API. This has
+        bitten us in production (2026-02-25: 1395 files blocked on a
+        1.9TB drive with 2GB free).
+
+        Returns:
+            Warning string if space is low, None if OK.
+        """
+        import shutil as _shutil
+
+        try:
+            usage = _shutil.disk_usage(self._root)
+            free_pct = (usage.free / usage.total) * 100
+            free_gb = usage.free / (1024 ** 3)
+
+            if free_pct < 1.5:
+                return (
+                    f"Only {free_gb:.1f}GB free ({free_pct:.1f}%). "
+                    f"Syncthing default minDiskFree is 1% "
+                    f"({usage.total / (1024**3) * 0.01:.0f}GB on this volume). "
+                    f"Sync may be blocked. Lower minDiskFree to 100MB via "
+                    f"Syncthing API or free disk space."
+                )
+        except OSError:
+            pass
+        return None
 
     def pending_outbox(self, peer: Optional[str] = None) -> list[Path]:
         """List envelope files waiting in the outbox.

@@ -234,19 +234,135 @@ def status(config: Optional[str], json_out: bool):
                 err = health.get("error", "")
                 table.add_row(name, f"[{color}]{s.upper()}[/]", lat, err)
 
+                if s == "degraded" and health.get("details", {}).get("disk_warning"):
+                    _print(f"\n  [bold yellow]⚠ {health['details']['disk_warning']}[/]")
+
         console.print(table)
 
     _print("")
 
 
+def _detect_syncthing() -> Optional[str]:
+    """Auto-detect the Syncthing comms root directory.
+
+    Checks common locations: ~/.skcapstone/comms, ~/Sync/comms,
+    and queries the Syncthing API if available.
+
+    Returns:
+        str: Path to comms_root if found, else None.
+    """
+    # Reason: prefer the Syncthing-shared path over the local-only default
+    candidates = [
+        Path("~/.skcapstone/sync/comms").expanduser(),
+        Path("~/.skcapstone/comms").expanduser(),
+        Path("~/Sync/skcomm").expanduser(),
+        Path("~/Sync/comms").expanduser(),
+        Path("~/.local/share/syncthing/skcomm").expanduser(),
+    ]
+    for path in candidates:
+        if path.exists():
+            return str(path)
+
+    try:
+        import subprocess
+        result = subprocess.run(
+            ["syncthing", "--version"],
+            capture_output=True,
+            timeout=3,
+            check=False,
+        )
+        if result.returncode == 0:
+            return str(Path("~/.skcapstone/comms").expanduser())
+    except (FileNotFoundError, OSError, subprocess.TimeoutExpired):
+        pass
+
+    return None
+
+
+def _check_disk_space_warning(comms_path: Path) -> None:
+    """Warn if disk space is low enough to trigger Syncthing's minDiskFree.
+
+    Syncthing defaults to 1% free — on a 2TB drive that's ~20GB. If
+    you're near capacity, Syncthing silently refuses to sync new files.
+    This has caused hours of debugging in production.
+
+    Args:
+        comms_path: Path to the comms root directory.
+    """
+    import shutil as _shutil
+
+    try:
+        target = Path(comms_path).expanduser()
+        target.mkdir(parents=True, exist_ok=True)
+        usage = _shutil.disk_usage(target)
+        free_pct = (usage.free / usage.total) * 100
+        free_gb = usage.free / (1024 ** 3)
+        total_gb = usage.total / (1024 ** 3)
+        threshold_gb = total_gb * 0.01
+
+        if free_pct < 1.5:
+            _print(
+                f"  [bold red]⚠ LOW DISK SPACE[/]: {free_gb:.1f}GB free ({free_pct:.1f}%)"
+            )
+            _print(
+                f"    Syncthing default minDiskFree = 1% = [bold]{threshold_gb:.0f}GB[/] on this {total_gb:.0f}GB volume"
+            )
+            _print(
+                f"    Sync will be [bold red]BLOCKED[/] until you free space or lower the threshold."
+            )
+            _print(
+                f"    Fix: set minDiskFree to 100MB in Syncthing folder settings."
+            )
+        elif free_pct < 5:
+            _print(
+                f"  [yellow]![/] Disk space: {free_gb:.1f}GB free ({free_pct:.1f}%) — watch for Syncthing minDiskFree threshold"
+            )
+        else:
+            _print(
+                f"  [green]✓[/] Disk space: {free_gb:.1f}GB free ({free_pct:.1f}%)"
+            )
+    except OSError:
+        pass
+
+
+def _test_file_transport_ping(drop_root: Path) -> bool:
+    """Test the file transport by writing and removing a probe file.
+
+    Args:
+        drop_root: The filedrop root directory.
+
+    Returns:
+        bool: True if the write/read/remove succeeded.
+    """
+    import time
+    probe = drop_root / "inbox" / f".skcomm_probe_{int(time.time())}.tmp"
+    try:
+        probe.write_text("ping")
+        result = probe.exists() and probe.read_text() == "ping"
+        probe.unlink(missing_ok=True)
+        return result
+    except OSError:
+        return False
+
+
 @main.command("init")
-@click.option("--name", prompt="Agent name", help="Your agent identity name.")
+@click.option("--name", default=None, help="Your agent identity name.")
 @click.option("--fingerprint", default=None, help="PGP fingerprint for signing.")
-def init_config(name: str, fingerprint: Optional[str]):
+@click.option("--force", "-f", is_flag=True, help="Overwrite existing config without prompt.")
+def init_config(name: Optional[str], fingerprint: Optional[str], force: bool):
     """Initialize SKComm configuration.
 
-    Creates ~/.skcomm/config.yml with sensible defaults
-    and registers the Syncthing and file transports.
+    Creates ~/.skcomm/config.yml with sensible defaults,
+    auto-detects Syncthing, tests file transport connectivity,
+    and prints a setup summary.
+
+    Examples:
+
+        skcomm init
+
+        skcomm init --name jarvis
+
+        skcomm init --name jarvis --fingerprint ABC123 --force
     """
     import yaml
 
@@ -254,10 +370,45 @@ def init_config(name: str, fingerprint: Optional[str]):
     home.mkdir(parents=True, exist_ok=True)
 
     config_path = home / "config.yml"
-    if config_path.exists():
+
+    if config_path.exists() and not force:
         if not click.confirm(f"Config already exists at {config_path}. Overwrite?", default=False):
             _print("[yellow]Aborted.[/]")
             return
+
+    # Prompt for agent name if not provided
+    if not name:
+        import os
+        default_name = os.environ.get("USER", "agent")
+        name = click.prompt("Agent name", default=default_name)
+
+    _print(f"\n  [bold]Initializing SKComm for [cyan]{name}[/]...[/]\n")
+
+    # Detect Syncthing
+    comms_root = _detect_syncthing()
+    if comms_root:
+        _print(f"  [green]✓[/] Syncthing comms root detected: [dim]{comms_root}[/]")
+    else:
+        comms_root = str(Path("~/.skcapstone/comms").expanduser())
+        _print(f"  [yellow]![/] Syncthing not detected. Using default: [dim]{comms_root}[/]")
+        _print(f"    Run [cyan]syncthing[/] and share a folder to enable P2P messaging.")
+
+    # Setup directories
+    filedrop = home / "filedrop"
+    (home / "logs").mkdir(exist_ok=True)
+    (filedrop / "inbox").mkdir(parents=True, exist_ok=True)
+    (filedrop / "outbox").mkdir(parents=True, exist_ok=True)
+    (home / "peers").mkdir(exist_ok=True)
+
+    # Test file transport connectivity
+    file_ok = _test_file_transport_ping(filedrop)
+    if file_ok:
+        _print(f"  [green]✓[/] File transport: OK [dim]({filedrop})[/]")
+    else:
+        _print(f"  [red]✗[/] File transport: write test failed at [dim]{filedrop}[/]")
+
+    # Disk space check — Syncthing silently blocks sync below 1% free
+    _check_disk_space_warning(Path(comms_root))
 
     config = {
         "skcomm": {
@@ -276,14 +427,14 @@ def init_config(name: str, fingerprint: Optional[str]):
                     "enabled": True,
                     "priority": 1,
                     "settings": {
-                        "comms_root": str(Path("~/.skcapstone/comms")),
+                        "comms_root": comms_root,
                     },
                 },
                 "file": {
                     "enabled": True,
                     "priority": 2,
                     "settings": {
-                        "drop_root": str(home / "filedrop"),
+                        "drop_root": str(filedrop),
                     },
                 },
             },
@@ -294,15 +445,153 @@ def init_config(name: str, fingerprint: Optional[str]):
         config["skcomm"]["identity"]["fingerprint"] = fingerprint
 
     config_path.write_text(yaml.dump(config, default_flow_style=False))
+    _print(f"  [green]✓[/] Config written: [dim]{config_path}[/]")
 
-    (home / "logs").mkdir(exist_ok=True)
-    (home / "filedrop" / "inbox").mkdir(parents=True, exist_ok=True)
-    (home / "filedrop" / "outbox").mkdir(parents=True, exist_ok=True)
-
-    _print(f"\n  [green]SKComm initialized[/]")
-    _print(f"  Config: [cyan]{config_path}[/]")
-    _print(f"  Identity: [bold]{name}[/]")
+    # Summary
+    _print(f"\n  [bold green]SKComm ready![/]")
+    _print(f"  Identity:   [bold cyan]{name}[/]")
+    if fingerprint:
+        _print(f"  Fingerprint: [dim]{fingerprint}[/]")
     _print(f"  Transports: syncthing (priority 1), file (priority 2)")
+    _print(f"  Config:     [dim]{config_path}[/]")
+    _print(f"  API:        [dim]skcomm serve[/] (port 9384)")
+    _print(f"  Send test:  [dim]skcomm send <peer> 'hello'[/]")
+    _print("")
+
+
+@main.group("peer")
+def peer_group():
+    """Peer directory — add, list, and remove peers.
+
+    Maps friendly agent names to transport addresses.
+    Peers are stored in ~/.skcomm/peers/ and used by the router
+    when resolving recipient names.
+    """
+
+
+@peer_group.command("add")
+@click.argument("name")
+@click.argument("address")
+@click.option(
+    "--transport",
+    "-t",
+    default="syncthing",
+    type=click.Choice(["syncthing", "file", "nostr"]),
+    help="Transport type (default: syncthing).",
+)
+@click.option("--fingerprint", default=None, help="PGP fingerprint for this peer.")
+def peer_add(name: str, address: str, transport: str, fingerprint: Optional[str]):
+    """Add or update a peer in the directory.
+
+    Maps a friendly agent name to a transport address.
+    The address is interpreted based on the transport type:
+    - syncthing: path to the comms_root directory
+    - file:      path to the shared inbox directory
+    - nostr:     hex pubkey or relay URL
+
+    Examples:
+
+        skcomm peer add lumina ~/.skcapstone/comms --transport syncthing
+
+        skcomm peer add opus /mnt/shared/inbox --transport file
+
+        skcomm peer add hal9000 abc123...def --transport nostr
+    """
+    from .discovery import PeerInfo, PeerStore, PeerTransport
+
+    settings: dict = {}
+    if transport == "syncthing":
+        settings = {"comms_root": address}
+    elif transport == "file":
+        settings = {"inbox_path": address}
+    else:
+        settings = {"address": address}
+
+    peer = PeerInfo(
+        name=name,
+        fingerprint=fingerprint,
+        transports=[PeerTransport(transport=transport, settings=settings)],
+        discovered_via="manual",
+    )
+
+    store = PeerStore()
+    store.add(peer)
+    _print(f"\n  [green]Peer added:[/] [bold]{name}[/]")
+    _print(f"  Transport: [cyan]{transport}[/]")
+    _print(f"  Address:   [dim]{address}[/]")
+    if fingerprint:
+        _print(f"  Fingerprint: [dim]{fingerprint}[/]")
+    _print("")
+
+
+@peer_group.command("remove")
+@click.argument("name")
+def peer_remove(name: str):
+    """Remove a peer from the directory.
+
+    Examples:
+
+        skcomm peer remove lumina
+    """
+    from .discovery import PeerStore
+
+    store = PeerStore()
+    removed = store.remove(name)
+    if removed:
+        _print(f"\n  [green]Removed peer:[/] {name}\n")
+    else:
+        _print(f"\n  [yellow]Peer not found:[/] {name}\n")
+
+
+@peer_group.command("list")
+@click.option("--json-out", is_flag=True, help="Output as JSON.")
+def peer_list(json_out: bool):
+    """List all peers in the directory.
+
+    Shows peers stored via `skcomm peer add` or discovered
+    automatically, with transport endpoints and last-seen times.
+    """
+    from .discovery import PeerStore
+
+    store = PeerStore()
+    all_peers = store.list_all()
+
+    if json_out:
+        import json as _json
+
+        click.echo(_json.dumps(
+            [p.model_dump(mode="json", exclude_none=True) for p in all_peers],
+            indent=2,
+        ))
+        return
+
+    if not all_peers:
+        _print("\n  [dim]No peers in directory.[/]")
+        _print("  [dim]Run [bold]skcomm peer add <name> <address>[/] to add one.[/]\n")
+        return
+
+    _print(f"\n  [bold]{len(all_peers)}[/] peer(s):\n")
+
+    if console:
+        table = Table(show_header=True, header_style="bold", box=None, padding=(0, 2))
+        table.add_column("Name", style="cyan")
+        table.add_column("Transports", style="dim")
+        table.add_column("Via", style="dim")
+        table.add_column("Last Seen")
+        table.add_column("Fingerprint", style="dim", max_width=16)
+
+        for p in all_peers:
+            transports = ", ".join(t.transport for t in p.transports) or "-"
+            seen = p.last_seen.strftime("%Y-%m-%d %H:%M") if p.last_seen else "-"
+            fp = (p.fingerprint[:16] + "...") if p.fingerprint and len(p.fingerprint) > 16 else (p.fingerprint or "-")
+            table.add_row(p.name, transports, p.discovered_via, seen, fp)
+
+        console.print(table)
+    else:
+        for p in all_peers:
+            transports = ", ".join(t.transport for t in p.transports) or "none"
+            click.echo(f"  {p.name}  [{transports}]  via {p.discovered_via}")
+
     _print("")
 
 
@@ -430,34 +719,49 @@ def discover(config: Optional[str], save: bool, mdns: bool, json_out: bool):
         _print("")
 
 
-@main.command("heartbeat")
+@main.group("heartbeat", invoke_without_command=True)
 @click.option("--config", "-c", default=None, help="Config file path.")
-@click.option("--emit/--no-emit", default=True, help="Emit our heartbeat first.")
+@click.option("--emit/--no-emit", default=True, help="Emit our heartbeat first (v1 legacy).")
 @click.option("--json-out", is_flag=True, help="Output as JSON.")
-def heartbeat(config: Optional[str], emit: bool, json_out: bool):
-    """Emit a heartbeat and show peer liveness.
+@click.pass_context
+def heartbeat_group(ctx: click.Context, config: Optional[str], emit: bool, json_out: bool):
+    """Heartbeat commands — publish and monitor node health beacons.
 
-    Writes a heartbeat file to the shared comms directory
-    (propagated by Syncthing) and scans for peer heartbeats.
+    Run without a subcommand to emit a v1 heartbeat and show peer liveness
+    (legacy mode). Use subcommands for the v2 rich state beacon.
 
     Examples:
 
         skcomm heartbeat
 
-        skcomm heartbeat --no-emit
+        skcomm heartbeat publish --node-id jarvis-desktop
 
-        skcomm heartbeat --json-out
+        skcomm heartbeat status --node-id jarvis-desktop
+
+        skcomm heartbeat nodes
     """
+    if ctx.invoked_subcommand is not None:
+        return
+
     from .config import load_config
     from .heartbeat import HeartbeatMonitor, PeerLiveness
 
     cfg = load_config(config)
+
+    syncthing_cfg = cfg.transports.get("syncthing")
+    comms_root_path = None
+    if syncthing_cfg and syncthing_cfg.enabled:
+        raw = syncthing_cfg.settings.get("comms_root")
+        if raw:
+            comms_root_path = Path(raw).expanduser()
+
     monitor = HeartbeatMonitor(
         agent_name=cfg.identity.name,
         fingerprint=cfg.identity.fingerprint,
         transports=[
             name for name, tc in cfg.transports.items() if tc.enabled
         ],
+        comms_root=comms_root_path,
     )
 
     if emit:
@@ -518,6 +822,224 @@ def heartbeat(config: Optional[str], emit: bool, json_out: bool):
 
     alive = sum(1 for r in results if r.status == PeerLiveness.ALIVE)
     _print(f"\n  {alive}/{len(results)} peers alive\n")
+
+
+@heartbeat_group.command("publish")
+@click.option("--node-id", required=True, help="Node identifier (e.g. jarvis-desktop).")
+@click.option("--agent-name", default="", help="Human-readable agent name.")
+@click.option(
+    "--capability",
+    "-c",
+    multiple=True,
+    help="Capability to advertise (repeat for multiple).",
+)
+@click.option(
+    "--sync-root",
+    default=None,
+    help="Override Syncthing sync root (default: ~/.skcapstone/sync).",
+)
+@click.option("--state", default="active", help="Node state (active/idle/busy).")
+@click.option("--skcomm-status", default="online", help="SKComm connectivity state.")
+@click.option("--ttl", default=120, help="Heartbeat TTL in seconds.")
+@click.option("--json-out", is_flag=True, help="Print the written JSON.")
+def heartbeat_publish(
+    node_id: str,
+    agent_name: str,
+    capability: tuple,
+    sync_root: Optional[str],
+    state: str,
+    skcomm_status: str,
+    ttl: int,
+    json_out: bool,
+):
+    """Publish a v2 heartbeat for this node (one-shot).
+
+    Writes a rich heartbeat JSON file containing system resources,
+    advertised capabilities, and claimed tasks. Safe to run from a cron
+    job or systemd timer — each node writes only its own file.
+
+    Examples:
+
+        skcomm heartbeat publish --node-id jarvis-desktop \\
+            --agent-name jarvis \\
+            --capability code --capability gpu
+
+        skcomm heartbeat publish --node-id lumina-laptop --ttl 60
+    """
+    from .heartbeat import HeartbeatConfig, HeartbeatPublisher
+
+    cfg = HeartbeatConfig(
+        node_id=node_id,
+        agent_name=agent_name or node_id,
+        capabilities=list(capability),
+        ttl_seconds=ttl,
+        sync_root=Path(sync_root).expanduser() if sync_root else Path("~/.skcapstone/sync").expanduser(),
+        skcomm_status=skcomm_status,
+    )
+
+    publisher = HeartbeatPublisher(config=cfg, state=state)
+    path = publisher.publish()
+
+    if json_out:
+        click.echo(path.read_text())
+        return
+
+    _print(f"\n  [green]Heartbeat published[/] → [dim]{path}[/]")
+    _print(f"  Node:   [bold cyan]{node_id}[/]")
+    _print(f"  State:  {state}")
+    _print(f"  TTL:    {ttl}s")
+    if capability:
+        _print(f"  Caps:   {', '.join(capability)}")
+    _print("")
+
+
+@heartbeat_group.command("status")
+@click.argument("node_id")
+@click.option(
+    "--sync-root",
+    default=None,
+    help="Override sync root (default: ~/.skcapstone/sync).",
+)
+@click.option("--json-out", is_flag=True, help="Output as JSON.")
+def heartbeat_status(node_id: str, sync_root: Optional[str], json_out: bool):
+    """Show the v2 heartbeat for a specific node.
+
+    Reads the node's heartbeat file and displays its state, resources,
+    capabilities, and whether it has expired.
+
+    Examples:
+
+        skcomm heartbeat status jarvis-desktop
+
+        skcomm heartbeat status lumina-laptop --json-out
+    """
+    from .heartbeat import NodeHeartbeatMonitor
+
+    root = Path(sync_root).expanduser() if sync_root else None
+    monitor = NodeHeartbeatMonitor(sync_root=root)
+    hb = monitor.get_node(node_id)
+
+    if hb is None:
+        _print(f"\n  [yellow]No heartbeat found for node:[/] {node_id}\n")
+        raise SystemExit(1)
+
+    if json_out:
+        click.echo(hb.model_dump_json(indent=2))
+        return
+
+    expired = hb.is_expired()
+    state_color = "green" if not expired else "red"
+    _print(f"\n  Node:     [bold cyan]{hb.node_id}[/]")
+    _print(f"  Agent:    {hb.agent_name or '-'}")
+    _print(f"  State:    [{state_color}]{hb.state}[/]{'  [red][EXPIRED][/]' if expired else ''}")
+    _print(f"  SKComm:   {hb.skcomm_status}")
+    _print(f"  Timestamp: {hb.timestamp.strftime('%Y-%m-%d %H:%M:%S UTC')}")
+    _print(f"  TTL:       {hb.ttl_seconds}s")
+
+    if hb.capabilities:
+        _print(f"  Caps:      {', '.join(hb.capabilities)}")
+
+    r = hb.resources
+    _print(f"  CPU:       {r.cpu_percent:.1f}%")
+    _print(f"  RAM:       {r.ram_used_gb:.1f} / {r.ram_total_gb:.1f} GB")
+    _print(f"  Disk free: {r.disk_free_gb:.1f} GB")
+    _print(f"  GPU:       {'yes' if r.gpu_available else 'no'}")
+
+    if hb.claimed_tasks:
+        _print(f"  Tasks:     {', '.join(hb.claimed_tasks)}")
+    if hb.loaded_models:
+        _print(f"  Models:    {', '.join(hb.loaded_models)}")
+    _print("")
+
+
+@heartbeat_group.command("nodes")
+@click.option(
+    "--sync-root",
+    default=None,
+    help="Override sync root (default: ~/.skcapstone/sync).",
+)
+@click.option("--capability", "-c", default=None, help="Filter to nodes with this capability.")
+@click.option("--all", "show_all", is_flag=True, help="Include expired (stale) nodes.")
+@click.option("--json-out", is_flag=True, help="Output as JSON.")
+def heartbeat_nodes(
+    sync_root: Optional[str],
+    capability: Optional[str],
+    show_all: bool,
+    json_out: bool,
+):
+    """List all live nodes on the mesh (v2 heartbeats).
+
+    Scans the shared heartbeat directory and shows nodes that have
+    published a v2 beacon within their TTL window.
+
+    Examples:
+
+        skcomm heartbeat nodes
+
+        skcomm heartbeat nodes --capability gpu
+
+        skcomm heartbeat nodes --all --json-out
+    """
+    from .heartbeat import NodeHeartbeatMonitor
+
+    root = Path(sync_root).expanduser() if sync_root else None
+    monitor = NodeHeartbeatMonitor(sync_root=root)
+
+    if show_all:
+        nodes = monitor.all_nodes()
+    elif capability:
+        nodes = monitor.find_capable(capability)
+    else:
+        nodes = monitor.discover_nodes()
+
+    if json_out:
+        import json as _json
+
+        click.echo(_json.dumps(
+            [n.model_dump(mode="json") for n in nodes],
+            indent=2,
+            default=str,
+        ))
+        return
+
+    if not nodes:
+        label = f"with capability '{capability}'" if capability else "live"
+        _print(f"\n  [dim]No {label} nodes found.[/]\n")
+        return
+
+    _print(f"\n  [bold]{len(nodes)}[/] node(s):\n")
+
+    if console:
+        from datetime import datetime as _dt
+
+        now = _dt.now(timezone.utc)
+        table = Table(show_header=True, header_style="bold", box=None, padding=(0, 2))
+        table.add_column("Node", style="cyan")
+        table.add_column("State")
+        table.add_column("Age", justify="right")
+        table.add_column("CPU", justify="right")
+        table.add_column("RAM used", justify="right")
+        table.add_column("GPU")
+        table.add_column("Capabilities", style="dim")
+
+        for n in nodes:
+            age_s = (now - n.timestamp).total_seconds()
+            age_str = f"{int(age_s)}s"
+            expired = n.is_expired(now)
+            state_fmt = f"[red]{n.state}[/]" if expired else f"[green]{n.state}[/]"
+            cpu_str = f"{n.resources.cpu_percent:.0f}%"
+            ram_str = f"{n.resources.ram_used_gb:.1f}G"
+            gpu_str = "[green]yes[/]" if n.resources.gpu_available else "no"
+            caps = ", ".join(n.capabilities) or "-"
+            table.add_row(n.node_id, state_fmt, age_str, cpu_str, ram_str, gpu_str, caps)
+
+        console.print(table)
+    else:
+        for n in nodes:
+            caps = ", ".join(n.capabilities) or "none"
+            click.echo(f"  {n.node_id:24} {n.state:8}  caps=[{caps}]")
+
+    _print("")
 
 
 # ---------------------------------------------------------------------------
@@ -831,6 +1353,45 @@ def queue_purge(expired: bool, yes: bool):
         for m in items:
             q.dequeue(m.envelope_id)
         _print(f"\n  Purged [bold]{len(items)}[/] envelope(s).\n")
+
+
+@main.command("serve")
+@click.option("--host", default="127.0.0.1", help="Host to bind to.")
+@click.option("--port", "-p", default=9384, help="Port to bind to.")
+@click.option("--reload", is_flag=True, help="Enable auto-reload (dev mode).")
+def serve(host: str, port: int, reload: bool):
+    """Start the SKComm REST API server.
+
+    Runs a FastAPI server that wraps the SKComm Python API
+    and exposes HTTP endpoints for Flutter/desktop clients.
+
+    Examples:
+
+        skcomm serve
+
+        skcomm serve --port 8080
+
+        skcomm serve --reload  # Dev mode with auto-reload
+    """
+    try:
+        import uvicorn
+    except ImportError:
+        _print("\n  [red]Error:[/] uvicorn not installed.")
+        _print("  Install with: [cyan]pip install skcomm[api][/]\n")
+        raise SystemExit(1)
+
+    _print(f"\n  [green]Starting SKComm API server[/]")
+    _print(f"  Host: [cyan]{host}[/]")
+    _print(f"  Port: [cyan]{port}[/]")
+    _print(f"  Docs: [cyan]http://{host}:{port}/docs[/]\n")
+
+    uvicorn.run(
+        "skcomm.api:app",
+        host=host,
+        port=port,
+        reload=reload,
+        log_level="info",
+    )
 
 
 @main.command("stats")

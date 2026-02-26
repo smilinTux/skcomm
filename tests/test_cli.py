@@ -59,7 +59,7 @@ class TestInitCommand:
         with patch("skcomm.cli._HOME", str(tmp_path)):
             result = runner.invoke(main, ["init", "--name", "testbot"])
             assert result.exit_code == 0
-            assert "initialized" in result.output.lower() or "Initialized" in result.output
+            assert "ready" in result.output.lower() or "initialized" in result.output.lower()
 
             config_path = tmp_path / "config.yml"
             assert config_path.exists()
@@ -190,3 +190,99 @@ class TestPeersCommand:
             result = runner.invoke(main, ["peers"])
             assert result.exit_code == 0
             assert "no peers" in result.output.lower() or "No peers" in result.output
+
+
+class TestPeerGroup:
+    """Test the peer subcommand group (add, remove, list)."""
+
+    def test_peer_add_syncthing(self, runner, tmp_path):
+        """Expected: peer add stores a syncthing peer."""
+        from skcomm.discovery import PeerStore
+        original_init = PeerStore.__init__
+
+        def patched_init(self, peers_dir=None):
+            original_init(self, peers_dir=tmp_path / "peers")
+
+        with patch.object(PeerStore, "__init__", patched_init):
+            result = runner.invoke(
+                main,
+                ["peer", "add", "lumina", "/home/user/.skcapstone/comms", "--transport", "syncthing"],
+            )
+            assert result.exit_code == 0
+            assert "lumina" in result.output
+            assert "syncthing" in result.output.lower()
+
+    def test_peer_add_file_transport(self, runner, tmp_path):
+        """Expected: peer add with file transport stores address."""
+        from skcomm.discovery import PeerStore
+        original_init = PeerStore.__init__
+
+        def patched_init(self, peers_dir=None):
+            original_init(self, peers_dir=tmp_path / "peers")
+
+        with patch.object(PeerStore, "__init__", patched_init):
+            result = runner.invoke(
+                main,
+                ["peer", "add", "opus", "/mnt/shared/inbox", "--transport", "file"],
+            )
+            assert result.exit_code == 0
+            assert "opus" in result.output
+
+    def test_peer_list_empty(self, runner, tmp_path):
+        """Expected: peer list shows empty message when no peers."""
+        from skcomm.discovery import PeerStore
+        original_init = PeerStore.__init__
+
+        def patched_init(self, peers_dir=None):
+            original_init(self, peers_dir=tmp_path / "peers")
+
+        with patch.object(PeerStore, "__init__", patched_init):
+            result = runner.invoke(main, ["peer", "list"])
+            assert result.exit_code == 0
+            assert "no peers" in result.output.lower()
+
+    def test_peer_list_shows_added_peer(self, runner, tmp_path):
+        """Expected: peer list displays peers after adding them."""
+        from skcomm.discovery import PeerStore
+        original_init = PeerStore.__init__
+
+        def patched_init(self, peers_dir=None):
+            original_init(self, peers_dir=tmp_path / "peers")
+
+        with patch.object(PeerStore, "__init__", patched_init):
+            runner.invoke(
+                main,
+                ["peer", "add", "hal9000", "/comms", "--transport", "syncthing"],
+            )
+            result = runner.invoke(main, ["peer", "list"])
+            assert result.exit_code == 0
+            assert "hal9000" in result.output
+
+    def test_peer_remove_nonexistent(self, runner, tmp_path):
+        """Edge case: peer remove of missing peer shows warning."""
+        from skcomm.discovery import PeerStore
+        original_init = PeerStore.__init__
+
+        def patched_init(self, peers_dir=None):
+            original_init(self, peers_dir=tmp_path / "peers")
+
+        with patch.object(PeerStore, "__init__", patched_init):
+            result = runner.invoke(main, ["peer", "remove", "nobody"])
+            assert result.exit_code == 0
+            assert "not found" in result.output.lower()
+
+    def test_peer_add_with_fingerprint(self, runner, tmp_path):
+        """Expected: peer add stores optional fingerprint."""
+        from skcomm.discovery import PeerStore
+        original_init = PeerStore.__init__
+
+        def patched_init(self, peers_dir=None):
+            original_init(self, peers_dir=tmp_path / "peers")
+
+        with patch.object(PeerStore, "__init__", patched_init):
+            result = runner.invoke(
+                main,
+                ["peer", "add", "secure-peer", "/comms", "--fingerprint", "DEADBEEF1234"],
+            )
+            assert result.exit_code == 0
+            assert "DEADBEEF1234" in result.output
