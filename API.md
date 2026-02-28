@@ -246,6 +246,77 @@ Update presence status.
 
 *Note: This is a placeholder endpoint. Full presence management requires a heartbeat system.*
 
+### WebRTC Signaling
+
+**WS /webrtc/ws**
+
+WebSocket endpoint for WebRTC signaling. Implements the Weblink wire protocol.
+
+**Authentication**: `Authorization: Bearer <capauth_fingerprint_token>` header on WS upgrade. Returns `4401` close code if token is invalid.
+
+**Query parameters**:
+- `room` — Room ID (default: `"default"`)
+- `peer` — Peer ID hint (overridden by authenticated fingerprint from token)
+
+**Messages** (JSON):
+```json
+// Server → Client on join
+{"type": "welcome", "peers": ["<fingerprint>", ...]}
+
+// Server → Client when peer joins
+{"type": "peer_joined", "peer": "<fingerprint>"}
+
+// Client → Server to relay signaling to a peer
+{"type": "signal", "to": "<fingerprint>",
+ "data": {"sdp": {"type": "offer", "sdp": "..."},
+          "capauth": {"fingerprint": "...", "signed_at": "...", "signature": "..."}}}
+
+// Server → Client relayed signal
+{"type": "signal", "from": "<fingerprint>", "data": {...}}
+```
+
+---
+
+**GET /api/v1/webrtc/ice-config**
+
+Returns time-limited HMAC-SHA1 TURN credentials for WebRTC ICE configuration.
+Reads `SKCOMM_TURN_SECRET` environment variable.
+
+**Response:**
+```json
+{
+  "iceServers": [
+    {"urls": "stun:stun.l.google.com:19302"},
+    {"urls": "stun:nextcloud.skworld.io:3478"},
+    {
+      "urls": "turn:turn.skworld.io:3478",
+      "username": "1740000000:opus",
+      "credential": "<hmac-sha1-base64>"
+    }
+  ]
+}
+```
+
+---
+
+**GET /api/v1/webrtc/peers**
+
+List all connected peers in each active signaling room.
+
+**Response:**
+```json
+{
+  "rooms": {
+    "skcomm-CCBE9306410CF8CD": ["CCBE9306410CF8CD5E393D6DEC31663B95230684"],
+    "skcomm-F6E5D4C3B2A1CCBE": ["F6E5D4C3...", "CCBE9306..."]
+  },
+  "total_peers": 3,
+  "total_rooms": 2
+}
+```
+
+---
+
 ## Message Types
 
 - `text` - Plain text messages
@@ -255,6 +326,8 @@ Update presence status.
 - `command` - Command messages
 - `ack` - Acknowledgment messages
 - `heartbeat` - Heartbeat/presence messages
+- `webrtc_signal` - SDP offer/answer and ICE candidates for WebRTC negotiation
+- `webrtc_file` - Large file transfer over WebRTC parallel data channels
 
 ## Routing Modes
 
@@ -301,18 +374,20 @@ The API has CORS enabled for all origins (`*`). For production deployments, conf
 
 ## Architecture
 
-The API server wraps the existing SKComm Python API:
-
 ```
-Flutter/Desktop Client
-        ↓
-   HTTP/REST API (FastAPI)
+Flutter / Browser / Desktop Client
+        ↓ HTTP / REST
+   FastAPI server  (skcomm serve)
+   ├── REST endpoints (send, inbox, status, agents, presence)
+   ├── WS  /webrtc/ws          ← WebRTC signaling broker
+   ├── GET /api/v1/webrtc/ice-config
+   └── GET /api/v1/webrtc/peers
         ↓
    SKComm.from_config()
         ↓
    Router + Transports
         ↓
-   Syncthing / File / Nostr
+   WebRTC | Tailscale | WebSocket | Syncthing | File | Nostr
 ```
 
 ## Troubleshooting

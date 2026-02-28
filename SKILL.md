@@ -30,6 +30,9 @@ pip install "skcomm[discovery]"
 # Nostr transport (WebSocket)
 pip install "skcomm[nostr]"
 
+# WebRTC + Tailscale P2P transport (aiortc)
+pip install "skcomm[webrtc]"
+
 # All extras
 pip install "skcomm[all]"
 ```
@@ -341,6 +344,36 @@ skcomm status --json-out
 
 ---
 
+### `skcomm pubsub`
+
+Sovereign pub/sub — real-time event distribution across agents. Subcommands: `publish`, `subscribe`, `poll`, `topics`.
+
+```bash
+# Publish an event to a topic
+skcomm pubsub publish agent.status '{"status": "alive", "load": 0.4}'
+
+# Subscribe to a topic pattern (wildcard supported)
+skcomm pubsub subscribe agent.*
+
+# Poll for new messages on subscribed topics
+skcomm pubsub poll
+skcomm pubsub poll --topic agent.status
+
+# List all known topics
+skcomm pubsub topics
+```
+
+| Subcommand | Description |
+|------------|-------------|
+| `publish TOPIC PAYLOAD` | Publish a JSON payload to a topic (creates topic if new) |
+| `subscribe PATTERN` | Subscribe to a topic pattern (`*` wildcard supported) |
+| `poll` | Fetch new messages since last poll on all subscribed topics |
+| `topics` | List all topics with message counts and last activity |
+
+Topic naming convention: `<domain>.<entity>.<action>` (e.g. `agent.status`, `task.updates`, `coord.*`)
+
+---
+
 ## Transport Types
 
 SKComm routes messages through pluggable transports. The router selects transports based on priority, availability, and the chosen routing mode.
@@ -394,9 +427,11 @@ SKComm supports a full suite of additional transports for different network cond
 
 | Transport | Mechanism | Best For |
 |-----------|-----------|----------|
+| WebRTC | P2P data channels (aiortc, DTLS-SRTP) | Real-time P2P, calls/file transfer |
+| Tailscale | Direct TCP over Tailscale 100.x mesh IPs | Low-latency tailnet P2P |
+| WebSocket | Persistent connection to SKComm API server | Always-on server relay |
 | SSH | Write envelope to remote inbox via SSH | LAN / trusted networks |
 | Netcat | Raw TCP/UDP socket | Direct connection, low latency |
-| Tailscale | WireGuard mesh VPN | Cross-NAT, managed overlay |
 | Netbird | Self-hosted WireGuard mesh | Fully sovereign overlay |
 | Iroh | QUIC P2P with NAT hole-punching | Primary internet P2P |
 | Nostr | Encrypted events over WebSocket relays | Decentralized global reach |

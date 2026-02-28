@@ -38,9 +38,11 @@ One message. Many paths. Always delivered.
 └──────────────┘     │  ┌─────────────────────┐ │     └──────────────┘
                      │  │  Transport Registry  │ │
                      │  │                     │ │
+                     │  │  ✓ WebRTC (P2P)     │ │
+                     │  │  ✓ Tailscale (mesh) │ │
+                     │  │  ✓ WebSocket        │ │
+                     │  │  ✓ Syncthing        │ │
                      │  │  ✓ File (NFS/SSHFS) │ │
-                     │  │  ✓ Netcat (TCP/UDP) │ │
-                     │  │  ✓ SSH tunnel       │ │
                      │  │  ✓ Nostr (relays)   │ │
                      │  │  ✓ Iroh (P2P direct)│ │
                      │  │  ✓ Veilid (stealth) │ │
@@ -87,6 +89,12 @@ Each transport is a self-contained module with a standard interface: `send(envel
 
 ```bash
 pip install skcomm
+
+# With WebRTC + Tailscale P2P transport (aiortc)
+pip install "skcomm[webrtc]"
+
+# All extras
+pip install "skcomm[all]"
 ```
 
 Or from source:
@@ -172,10 +180,13 @@ class Transport(Protocol):
 
 | Transport | Type | Latency | Reliability | Offline | Stealth |
 |-----------|------|---------|-------------|---------|---------|
+| **WebRTC** | P2P data channels (aiortc, DTLS-SRTP) | <50ms | Very High | No | High |
+| **Tailscale** | Direct TCP over WireGuard mesh IPs | 5-50ms | High | No | High |
+| **WebSocket** | Persistent WS connection to SKComm server | 10-100ms | High | No | Medium |
+| **Syncthing** | Encrypted file sync (sovereign) | <1s | Very High | Yes | High |
 | **File** | Shared filesystem (NFS, SSHFS, Nextcloud) | <1s | High | Yes | High |
 | **SSH** | Direct SSH command execution | 1-3s | High | No | Medium |
 | **Netcat** | Raw TCP/UDP socket | <1ms | Medium | LAN only | High |
-| **Tailscale** | WireGuard mesh VPN | 5-50ms | High | No | High |
 | **Netbird** | WireGuard mesh (self-hosted) | 5-50ms | High | No | High |
 | **GitHub** | Issues, PRs, or file commits | 1-5s | High | No | Low |
 | **Telegram** | Bot API messaging | 1-2s | Medium | No | Low |
@@ -268,6 +279,8 @@ Every message is wrapped in a universal envelope before transport:
 | `command` | Remote command request (requires explicit trust) |
 | `heartbeat` | Presence/alive check |
 | `ack` | Delivery confirmation |
+| `webrtc_signal` | SDP offer/answer and ICE candidates for WebRTC negotiation |
+| `webrtc_file` | Large file transfer via WebRTC parallel data channels |
 
 ---
 
@@ -286,17 +299,19 @@ Message Submission
   ┌─────────────┐     ┌──────────────────────────────────────┐
   │ Transport   │────▶│ Try transports in priority order:     │
   │ Router      │     │                                      │
-  └─────────────┘     │ 1. tailscale (priority 1) → SUCCESS  │──▶ Done
+  └─────────────┘     │ 1. webrtc    (priority 1) → SUCCESS  │──▶ Done
                       │    └─ if fail ──────────────────────┐│
-                      │ 2. file (priority 2) → SUCCESS      ││──▶ Done
+                      │ 2. tailscale (priority 2) → SUCCESS ││──▶ Done
                       │    └─ if fail ──────────────────────┐│
-                      │ 3. ssh (priority 3) → SUCCESS       ││──▶ Done
+                      │ 3. websocket (priority 3) → SUCCESS ││──▶ Done
                       │    └─ if fail ──────────────────────┐│
-                      │ 4. github (priority 10) → SUCCESS   ││──▶ Done
+                      │ 4. syncthing (priority 4) → SUCCESS ││──▶ Done
                       │    └─ if fail ──────────────────────┐│
-                      │ 5. telegram (priority 11) → SUCCESS ││──▶ Done
+                      │ 5. file      (priority 5) → SUCCESS ││──▶ Done
+                      │    └─ if fail ──────────────────────┐│
+                      │ 6. nostr     (priority 10)→ SUCCESS ││──▶ Done
                       │    └─ if ALL fail ──────────────────┐│
-                      │ 6. Queue for retry (exponential     ││
+                      │ 7. Queue for retry (exponential     ││
                       │    backoff: 5s, 15s, 60s, 300s...)  ││
                       └──────────────────────────────────────┘
 ```

@@ -25,7 +25,7 @@ The key insight: **separate the message from the medium.** The message format ne
 │  Transport selection  │  Priority queue  │  Failover  │  Retry  │
 ├────────────────────────────────────────────────────────────────┤
 │                        Transport Layer                          │
-│  File │ SSH │ Netcat │ Tailscale │ GitHub │ Telegram │ ...      │
+│  WebRTC │ Tailscale │ WebSocket │ Syncthing │ File │ Nostr │ .. │
 ├────────────────────────────────────────────────────────────────┤
 │                        Network / Physical                       │
 │  TCP/IP │ UDP │ Filesystem │ USB │ QR code │ DNS │ IPFS         │
@@ -163,29 +163,33 @@ peer:
   fingerprint: F6E5D4C3B2A1...
   trust: sovereign
   transports:
-    - type: tailscale
+    - type: webrtc
       priority: 1
-      address: lumina.tail.net
-    - type: file
+      settings:
+        signaling_room: skcomm-F6E5D4C3B2A1CCBE
+    - type: tailscale
       priority: 2
-      path: /home/shared/collab/lumina-inbox/
-    - type: ssh
+      settings:
+        tailscale_ip: 100.64.0.2  # or resolved from tailscale status
+    - type: websocket
       priority: 3
-      host: 192.168.0.158
-      user: cbrd21
-      inbox_path: ~/skcomm/inbox/
-    - type: netcat
+    - type: syncthing
       priority: 4
-      host: 192.168.0.158
-      port: 9999
-    - type: github
+    - type: file
+      priority: 5
+      path: /home/shared/collab/lumina-inbox/
+    - type: nostr
       priority: 10
-      repo: smilinTux/skcomm-relay
-      method: issues
-    - type: telegram
-      priority: 11
-      chat_id: -1003899092893
 ```
+
+**Routing matrix (with WebRTC + Tailscale)**:
+
+| Urgency | Mode | First Choice | Fallback |
+|---------|------|--------------|---------|
+| CRITICAL | SPEED | webrtc → tailscale | websocket → syncthing |
+| HIGH | FAILOVER | webrtc → tailscale → websocket | syncthing → file |
+| NORMAL | FAILOVER | syncthing → file | webrtc → websocket |
+| LOW | STEALTH | file → nostr | syncthing |
 
 ### 5. Transport Layer
 
@@ -303,18 +307,68 @@ Config:
   timeout_ms: 5000
 ```
 
-### Tailscale Transport (`skcomm.transports.tailscale`)
+### WebRTC Transport (`skcomm.transports.webrtc`)
 ```
-Mechanism: WireGuard mesh VPN via Tailscale
-Delivery: Direct encrypted tunnel between nodes
-Advantage: Works across NATs without port forwarding
+Mechanism: P2P data channels via aiortc (DTLS-SRTP encrypted)
+Delivery: Sub-100ms direct P2P after ICE negotiation
+Priority: 1 (highest — used first in SPEED/REALTIME routing)
+Category: TransportCategory.REALTIME
+Optional dep: pip install "skcomm[webrtc]"
 
-Uses netcat transport internally over Tailscale IPs.
+Signaling: connects to SKComm signaling broker (WS /webrtc/ws)
+           falls back to standalone weblink-signaling Cloudflare Worker
+ICE: STUN (public + sovereign), TURN (coturn at turn.skworld.io)
+TURN auth: HMAC-SHA1 time-limited credentials via SKCOMM_TURN_SECRET
+
+Key design:
+  - Background asyncio event loop in daemon thread
+  - Sync-to-async bridge via asyncio.run_coroutine_threadsafe()
+  - Per-peer RTCPeerConnection with "skcomm" ordered/reliable data channel
+  - Parallel "skcomm-file-<id>-<n>" channels for large file transfer
+  - On first contact: returns SendResult(success=False); ICE completes in ~1-3s;
+    next send succeeds transparently (router falls back gracefully)
+  - SDP offer/answer wrapped in CapAuth PGP signature for MITM protection
 
 Config:
-  peers:
-    lumina: lumina.tail.net:9999
-  auth_key: tskey-...  # Optional for headless setup
+  transports:
+    webrtc:
+      enabled: true
+      priority: 1
+      settings:
+        signaling_url: "wss://skcomm.skworld.io/webrtc/ws"
+        stun_servers: ["stun:stun.l.google.com:19302"]
+        turn_server: "turn:turn.skworld.io:3478"
+        turn_secret: "${SKCOMM_TURN_SECRET}"
+        auto_connect: true
+```
+
+### Tailscale Transport (`skcomm.transports.tailscale`)
+```
+Mechanism: Direct TCP socket over Tailscale 100.x.x.x mesh IPs
+Delivery: Low-latency direct connection; no relay for tailnet peers
+Priority: 2
+Category: TransportCategory.REALTIME
+Advantage: Zero coturn config needed for tailnet-connected peers;
+           Tailscale DERP handles relay automatically
+
+Implementation:
+  - is_available(): runs "tailscale ip -4", checks for 100.x IP
+  - send(): resolves peer Tailscale IP → TCP socket → 4-byte big-endian
+            length prefix + envelope bytes
+  - Peer IP resolution order:
+      1. Manual registry (register_peer_ip(name, ip))
+      2. Peer store YAML (tailscale_ip field)
+      3. tailscale status --json (match by hostname)
+  - Background TCP listener thread with 1s accept timeout
+
+Config:
+  transports:
+    tailscale:
+      enabled: true
+      priority: 2
+      settings:
+        listen_port: 9385
+        auto_detect: true
 ```
 
 ### Netbird Transport (`skcomm.transports.netbird`)
@@ -549,6 +603,72 @@ Config:
   format: png
   error_correction: H  # High (30% recovery)
 ```
+
+---
+
+## WebRTC Signaling Broker
+
+The SKComm API server (`skcomm serve`) includes a sovereign WebRTC signaling broker
+compatible with the [Weblink](https://github.com/99percentpeople/weblink) wire protocol.
+
+```
+Alice                   SKComm Signaling Broker        Bob
+  │   wss://.../webrtc/ws?room=X&peer=FP_A             │
+  │─── connect (CapAuth Bearer token) ───────────────→  │
+  │                        │   (validates PGP token)    │
+  │←── welcome {peers:[]}  │                            │
+  │                        │  ←── connect (FP_B) ──────│
+  │←── peer_joined {FP_B}  │  ←── welcome {peers:[FP_A]}
+  │                        │                            │
+  │─── signal {to:FP_B,    │                            │
+  │     sdp:{type:offer,   │                            │
+  │     capauth:{sig}}} ──→│───── relay to FP_B ───────→│
+  │                        │                            │
+  │←── signal {from:FP_B,  │←─── signal {answer} ──────│
+  │     sdp:{type:answer}} │                            │
+  │                        │                            │
+  │═══════════════ P2P Data Channel (direct) ═══════════│
+```
+
+**Security chain**: CapAuth token authenticates WS upgrade → broker uses token
+fingerprint as peer_id (client-claimed peer param is ignored, preventing impersonation)
+→ SDP offer/answer carry a `capauth` field with PGP signature over the SDP body →
+DTLS fingerprint embedded in SDP is verified — MITM cannot substitute their fingerprint
+without breaking the PGP signature.
+
+**Sovereign deployment**: The signaling broker runs in-process inside `skcomm serve`.
+For edge deployment without a VPS, `weblink-signaling/cloudflare/worker.ts` implements
+the same protocol as a Cloudflare Durable Objects Worker.
+
+**Endpoints added to `skcomm serve`**:
+
+| Endpoint | Description |
+|----------|-------------|
+| `WS /webrtc/ws?room=R&peer=FP` | WebRTC signaling relay (CapAuth Bearer auth) |
+| `GET /api/v1/webrtc/ice-config` | Returns HMAC-SHA1 TURN credentials (TTL 86400s) |
+| `GET /api/v1/webrtc/peers` | List connected peers in each signaling room |
+
+---
+
+## Pub/Sub Broker
+
+The `skcomm pubsub` CLI and `PubSubBroker` class provide lightweight real-time
+event distribution without a dedicated message queue service.
+
+```
+Publisher                 PubSubBroker              Subscribers
+  │                           │                         │
+  │── publish("agent.status") │                         │
+  │   {status: "alive"}  ─────→ route to topic ────────→│ (all subscribed)
+  │                           │                         │
+```
+
+Topics use dot-notation with wildcard subscriptions (`agent.*` matches `agent.status`,
+`agent.health`). Messages persist with TTL and are distributed via Syncthing to
+remote nodes.
+
+**CLI commands**: `skcomm pubsub publish`, `skcomm pubsub subscribe`,
+`skcomm pubsub poll`, `skcomm pubsub topics` — see SKILL.md for full reference.
 
 ---
 
