@@ -580,6 +580,38 @@ class WebRTCTransport(Transport):
                         )
                         logger.info("WebRTC: applied SDP answer from %s", from_id[:8])
 
+            ice_data = data.get("ice")
+            if ice_data:
+                # Trickle ICE: remote peer sent a candidate after SDP exchange.
+                # Apply it to the existing peer connection so ICE can complete
+                # even when the local _wait_for_ice_gathering already returned.
+                candidate_str = ice_data.get("candidate", "")
+                if candidate_str:
+                    with self._peers_lock:
+                        peer = self._peers.get(from_id)
+                    if peer and peer.pc:
+                        try:
+                            from aiortc.sdp import candidate_from_sdp
+
+                            # Strip the "candidate:" prefix that browsers include
+                            sdp_line = candidate_str
+                            if sdp_line.startswith("candidate:"):
+                                sdp_line = sdp_line[len("candidate:"):]
+
+                            ice_candidate = candidate_from_sdp(sdp_line)
+                            ice_candidate.sdpMid = ice_data.get("sdpMid")
+                            ice_candidate.sdpMLineIndex = ice_data.get("sdpMLineIndex")
+                            await peer.pc.addIceCandidate(ice_candidate)
+                            logger.debug(
+                                "WebRTC: applied trickle ICE candidate from %s", from_id[:8]
+                            )
+                        except Exception as exc:
+                            logger.warning(
+                                "WebRTC: failed to apply ICE candidate from %s: %s",
+                                from_id[:8],
+                                exc,
+                            )
+
         except Exception as exc:
             logger.error("WebRTC: signal handler error (from=%s): %s", from_id[:8], exc)
 
@@ -721,16 +753,23 @@ class WebRTCTransport(Transport):
     def _schedule_offer(self, peer_id: str) -> None:
         """Schedule a WebRTC offer to a peer from the synchronous side.
 
+        Sets ``negotiating=True`` on a stub PeerConnection *before* dispatching
+        to the async loop so that concurrent ``send()`` calls do not enqueue a
+        second offer for the same peer while the first is being set up.
+        ``_create_peer_connection`` will replace the stub with the real one.
+
         Args:
             peer_id: Target peer fingerprint.
         """
         if not self._loop or not self._running:
             return
-        # Mark as negotiating immediately to prevent duplicate offers
         with self._peers_lock:
             if peer_id not in self._peers:
-                # Placeholder — will be replaced by _create_peer_connection
-                pass
+                # Install a stub so send() sees negotiating=True immediately.
+                # _create_peer_connection will overwrite this with the real PC.
+                self._peers[peer_id] = PeerConnection(
+                    peer_fingerprint=peer_id, pc=None, negotiating=True
+                )
         asyncio.run_coroutine_threadsafe(
             self._initiate_offer(peer_id),
             self._loop,

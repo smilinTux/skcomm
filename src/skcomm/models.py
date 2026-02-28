@@ -37,6 +37,8 @@ class MessageType(str, Enum):
     HEARTBEAT = "heartbeat"
     WEBRTC_SIGNAL = "webrtc_signal"
     WEBRTC_FILE = "webrtc_file"
+    SIGNING_REQUEST = "signing_request"
+    SIGNING_RESPONSE = "signing_response"
 
 
 class Urgency(str, Enum):

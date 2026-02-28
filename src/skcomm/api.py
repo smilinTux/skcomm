@@ -14,8 +14,9 @@ Run from CLI:
 from __future__ import annotations
 
 import logging
+from collections import defaultdict
 from contextlib import asynccontextmanager
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -26,7 +27,9 @@ from pydantic import BaseModel, Field
 from .capauth_validator import CapAuthValidator
 from .core import SKComm
 from .discovery import PeerInfo, PeerStore
-from .models import MessageType, RoutingMode, Urgency
+from .heartbeat import HeartbeatConfig, HeartbeatPublisher
+from .models import MessageEnvelope, MessageType, RoutingMode, Urgency
+from .outbox import PersistentOutbox
 from .signaling import SignalingBroker, signaling_ws_endpoint
 
 logger = logging.getLogger("skcomm.api")
@@ -54,11 +57,22 @@ async def lifespan(app: FastAPI):
         logger.exception("Failed to initialize SKComm")
         raise
 
-    # Initialize the WebRTC signaling broker
+    # Initialize the WebRTC signaling broker.
+    # require_auth=True (default) enforces PGP token verification on every
+    # WebSocket upgrade. To disable auth during local development set
+    # SKCOMM_DEV_AUTH=1 in the environment — this flips require_auth=False
+    # which accepts plain 40-hex fingerprints with no signature check.
+    import os as _os
+    dev_auth = _os.environ.get("SKCOMM_DEV_AUTH", "").lower() in {"1", "true", "yes"}
+    if dev_auth:
+        logger.warning(
+            "WebRTC signaling: SKCOMM_DEV_AUTH=1 — CapAuth signature check DISABLED. "
+            "Do NOT use in production."
+        )
     _broker = SignalingBroker(
-        validator=CapAuthValidator(require_auth=False),
+        validator=CapAuthValidator(require_auth=not dev_auth),
     )
-    logger.info("WebRTC signaling broker initialized")
+    logger.info("WebRTC signaling broker initialized (require_auth=%s)", not dev_auth)
 
     yield
 
@@ -387,16 +401,59 @@ async def get_inbox():
 async def get_conversations():
     """Get a list of active conversations.
 
-    Groups messages by thread_id and returns conversation metadata.
+    Groups messages by thread_id (or sender:recipient pair) and returns
+    conversation metadata. Sourced from the persistent outbox (pending
+    and dead-letter queues), which stores all messages that were queued
+    for delivery.
 
     Returns:
-        List of ConversationResponse objects.
-
-    Note:
-        This is a placeholder implementation. Full conversation
-        management requires persistent storage (SQLite, etc).
+        List of ConversationResponse objects, newest first.
     """
-    return []
+    try:
+        outbox = PersistentOutbox()
+        all_entries = outbox.list_pending() + outbox.list_dead()
+    except Exception as exc:
+        logger.warning("Could not read outbox for conversations: %s", exc)
+        all_entries = []
+
+    # Group envelopes by thread_id, falling back to "sender:recipient"
+    threads: dict[str, dict] = defaultdict(lambda: {
+        "participants": set(),
+        "count": 0,
+        "last_at": None,
+        "preview": "",
+    })
+
+    for entry in all_entries:
+        try:
+            env = MessageEnvelope.from_bytes(entry.envelope_json.encode())
+            key = env.metadata.thread_id or f"{env.sender}:{env.recipient}"
+            thread = threads[key]
+            thread["participants"].update([env.sender, env.recipient])
+            thread["count"] += 1
+            ts = env.metadata.created_at
+            if thread["last_at"] is None or ts > thread["last_at"]:
+                thread["last_at"] = ts
+                thread["preview"] = env.payload.content[:100]
+        except Exception:
+            continue
+
+    _epoch = datetime.fromtimestamp(0, tz=timezone.utc)
+    return [
+        ConversationResponse(
+            thread_id=tid,
+            participants=sorted(data["participants"]),
+            message_count=data["count"],
+            last_message_at=data["last_at"],
+            last_message_preview=data["preview"],
+        )
+        for tid, data in sorted(
+            threads.items(),
+            key=lambda x: x[1]["last_at"] or _epoch,
+            reverse=True,
+        )
+        if data["last_at"] is not None
+    ]
 
 
 @app.get(
@@ -566,12 +623,18 @@ async def remove_peer(name: str):
 def _get_broker() -> SignalingBroker:
     """Get or lazily create the global SignalingBroker.
 
+    Auth is controlled by the ``SKCOMM_DEV_AUTH`` environment variable:
+    unset (default) → ``require_auth=True`` (PGP verification enforced).
+    ``SKCOMM_DEV_AUTH=1`` → ``require_auth=False`` (dev mode, no sig check).
+
     Returns:
         SignalingBroker: Shared broker instance.
     """
     global _broker
     if _broker is None:
-        _broker = SignalingBroker(validator=CapAuthValidator(require_auth=False))
+        import os as _os
+        dev_auth = _os.environ.get("SKCOMM_DEV_AUTH", "").lower() in {"1", "true", "yes"}
+        _broker = SignalingBroker(validator=CapAuthValidator(require_auth=not dev_auth))
     return _broker
 
 
@@ -1043,27 +1106,71 @@ async def get_injection_prompt(snapshot_id: str, max_messages: int = 10):
 async def update_presence(request: PresenceRequest):
     """Update presence status.
 
-    Broadcasts a presence update to all connected transports.
+    Two-phase broadcast:
+    1. Writes a v2 heartbeat file to the sync mesh so Syncthing peers
+       pick it up automatically (HeartbeatPublisher).
+    2. Sends a HEARTBEAT envelope to every peer in the peer registry
+       via skcomm.send(), using LOW urgency so it doesn't block
+       higher-priority traffic.
 
     Args:
         request: PresenceRequest with status and optional message.
 
     Returns:
-        Confirmation dict with updated status.
-
-    Note:
-        This is a placeholder implementation. Full presence
-        management requires a heartbeat system.
+        Confirmation dict with updated status, heartbeat path, and
+        per-peer delivery results.
     """
     comm = get_skcomm()
 
-    presence_message = f"status:{request.status}"
+    presence_content = f"status:{request.status}"
     if request.message:
-        presence_message += f" | {request.message}"
+        presence_content += f" | {request.message}"
+
+    # Phase 1: write v2 heartbeat file to Syncthing mesh
+    hb_path: Optional[str] = None
+    try:
+        hb_config = HeartbeatConfig(
+            node_id=comm.identity,
+            agent_name=comm.identity,
+            skcomm_status=request.status,
+        )
+        publisher = HeartbeatPublisher(config=hb_config, state=request.status)
+        written = publisher.publish()
+        hb_path = str(written)
+        logger.info("Presence heartbeat written to %s", hb_path)
+    except Exception as exc:
+        logger.warning("Heartbeat publish failed: %s", exc)
+
+    # Phase 2: send HEARTBEAT envelope to all known peers via SKComm
+    peer_results: list[dict] = []
+    peer_errors: list[dict] = []
+    try:
+        store = PeerStore()
+        peers = store.list_all()
+        for peer in peers:
+            try:
+                report = comm.send(
+                    recipient=peer.name,
+                    message=presence_content,
+                    message_type=MessageType.HEARTBEAT,
+                    urgency=Urgency.LOW,
+                )
+                peer_results.append({
+                    "peer": peer.name,
+                    "delivered": report.delivered,
+                    "transport": report.successful_transport if report.delivered else None,
+                })
+            except Exception as exc:
+                peer_errors.append({"peer": peer.name, "error": str(exc)})
+    except Exception as exc:
+        logger.warning("Peer store lookup failed during presence broadcast: %s", exc)
 
     return {
         "status": request.status,
         "message": request.message,
-        "updated_at": datetime.now().isoformat(),
+        "updated_at": datetime.now(timezone.utc).isoformat(),
         "identity": comm.identity,
+        "heartbeat_path": hb_path,
+        "broadcast": peer_results,
+        "errors": peer_errors,
     }
