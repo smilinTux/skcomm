@@ -34,6 +34,8 @@ BUILTIN_TRANSPORTS: dict[str, str] = {
     "syncthing": "skcomm.transports.syncthing",
     "nostr": "skcomm.transports.nostr",
     "websocket": "skcomm.transports.websocket",
+    "tailscale": "skcomm.transports.tailscale",
+    "webrtc": "skcomm.transports.webrtc",
 }
 
 

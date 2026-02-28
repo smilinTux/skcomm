@@ -19,24 +19,29 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-from fastapi import FastAPI, HTTPException, status
+from fastapi import FastAPI, HTTPException, WebSocket, status
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
+from .capauth_validator import CapAuthValidator
 from .core import SKComm
 from .discovery import PeerInfo, PeerStore
 from .models import MessageType, RoutingMode, Urgency
+from .signaling import SignalingBroker, signaling_ws_endpoint
 
 logger = logging.getLogger("skcomm.api")
 
 # Global SKComm instance (initialized on startup)
 _skcomm: Optional[SKComm] = None
 
+# Global WebRTC signaling broker (initialized on startup)
+_broker: Optional[SignalingBroker] = None
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Manage SKComm lifecycle on server startup/shutdown."""
-    global _skcomm
+    global _skcomm, _broker
     logger.info("Starting SKComm API server...")
     try:
         _skcomm = SKComm.from_config()
@@ -48,11 +53,18 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         logger.exception("Failed to initialize SKComm")
         raise
-    
+
+    # Initialize the WebRTC signaling broker
+    _broker = SignalingBroker(
+        validator=CapAuthValidator(require_auth=False),
+    )
+    logger.info("WebRTC signaling broker initialized")
+
     yield
-    
+
     logger.info("Shutting down SKComm API server...")
     _skcomm = None
+    _broker = None
 
 
 app = FastAPI(
@@ -544,6 +556,121 @@ async def remove_peer(name: str):
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Peer '{name}' not found",
         )
+
+
+# ---------------------------------------------------------------------------
+# WebRTC Signaling endpoints
+# ---------------------------------------------------------------------------
+
+
+def _get_broker() -> SignalingBroker:
+    """Get or lazily create the global SignalingBroker.
+
+    Returns:
+        SignalingBroker: Shared broker instance.
+    """
+    global _broker
+    if _broker is None:
+        _broker = SignalingBroker(validator=CapAuthValidator(require_auth=False))
+    return _broker
+
+
+@app.websocket("/webrtc/ws")
+async def webrtc_signaling(
+    ws: WebSocket,
+    room: str = "default",
+    peer: str = "anonymous",
+):
+    """WebRTC signaling WebSocket — SDP/ICE relay for P2P connections.
+
+    Authenticates the connection via ``Authorization: Bearer <capauth_token>``.
+    Relays SDP offers/answers and ICE candidates between peers in the same room.
+    Compatible with the Weblink wire protocol and the SKComm Python transport.
+
+    Query params:
+        room: Signaling room ID (e.g. ``skcomm-CCBE9306410CF8CD``).
+        peer: Claimed peer fingerprint (overridden by authenticated fingerprint).
+
+    Headers:
+        Authorization: Bearer <capauth_token>
+
+    WebSocket close codes:
+        4401: Unauthorized (missing or invalid CapAuth token).
+    """
+    broker = _get_broker()
+    await signaling_ws_endpoint(ws=ws, room=room, peer=peer, broker=broker)
+
+
+@app.get("/api/v1/webrtc/ice-config", tags=["webrtc"])
+async def get_ice_config():
+    """Get TURN/STUN ICE server configuration with time-limited credentials.
+
+    Returns HMAC-SHA1 TURN credentials valid for 24 hours, suitable for
+    use in WebRTC ``RTCConfiguration.iceServers``. STUN servers are always
+    included as fallback.
+
+    Returns:
+        Dict with ``ice_servers`` list compatible with browser WebRTC API.
+    """
+    import base64
+    import hashlib
+    import hmac
+    import os
+    import time as _time
+
+    stun_servers = ["stun:stun.l.google.com:19302", "stun:stun.skworld.io:3478"]
+    turn_servers = []
+
+    turn_secret = os.environ.get("SKCOMM_TURN_SECRET")
+    turn_url = os.environ.get("SKCOMM_TURN_URL", "turn:turn.skworld.io:3478")
+
+    if turn_secret:
+        ttl = 86400
+        timestamp = int(_time.time()) + ttl
+        username = f"{timestamp}:skcomm"
+        credential = base64.b64encode(
+            hmac.new(
+                key=turn_secret.encode(),
+                msg=username.encode(),
+                digestmod=hashlib.sha1,
+            ).digest()
+        ).decode()
+        turn_servers.append({
+            "urls": turn_url,
+            "username": username,
+            "credential": credential,
+        })
+
+    return {
+        "ice_servers": (
+            [{"urls": s} for s in stun_servers]
+            + turn_servers
+        ),
+        "expires_in": 86400,
+    }
+
+
+@app.get("/api/v1/webrtc/peers", tags=["webrtc"])
+async def get_webrtc_peers(room: Optional[str] = None):
+    """List peers currently connected to the WebRTC signaling broker.
+
+    Args:
+        room: Optional room ID to filter by. Returns all rooms if omitted.
+
+    Returns:
+        Dict with ``rooms`` mapping room IDs to their connected peer lists.
+    """
+    broker = _get_broker()
+    all_rooms = broker.active_rooms()
+
+    if room:
+        peers = all_rooms.get(room, [])
+        return {"room": room, "peers": peers, "count": len(peers)}
+
+    return {
+        "rooms": all_rooms,
+        "total_peers": sum(len(p) for p in all_rooms.values()),
+    }
 
 
 # ---------------------------------------------------------------------------

@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import sys
+import threading
 from pathlib import Path
 from typing import Optional
 
@@ -1472,6 +1473,221 @@ def stats_cmd(json_out: bool, reset: bool):
                 f"  {s.transport:16} ok={s.sends_ok} fail={s.sends_fail} "
                 f"recv={s.receives} rate={s.success_rate:.0f}%"
             )
+
+    _print("")
+
+
+# ---------------------------------------------------------------------------
+# Pub/sub commands
+# ---------------------------------------------------------------------------
+
+
+@main.group("pubsub")
+def pubsub_group():
+    """Sovereign pub/sub — real-time event distribution across agents.
+
+    Subscribe to topics, publish events, and inspect the live topic
+    registry. Uses the in-process PubSubBroker with optional transport
+    forwarding to remote nodes.
+
+    Topic naming convention:  <domain>.<entity>.<action>
+
+    Wildcards:
+        *  matches exactly one level   (agent.* matches agent.heartbeat)
+        #  matches all remaining levels (coord.# matches coord.task.claimed)
+
+    Predefined topics:
+        agent.heartbeat         alive signals
+        agent.status            status changes
+        memory.stored           new memory created
+        memory.promoted         memory promoted to higher tier
+        coord.task.created      new task on board
+        coord.task.claimed      task claimed by agent
+        coord.task.completed    task marked done
+        sync.push               sync state pushed
+        sync.pull               sync state pulled
+        trust.updated           trust level changed
+
+    Examples:
+
+        skcomm pubsub listen agent.*
+
+        skcomm pubsub publish memory.stored '{\"content\": \"hello\"}'
+
+        skcomm pubsub topics
+    """
+
+
+@pubsub_group.command("listen")
+@click.argument("topic")
+@click.option("--timeout", "-t", default=0, help="Stop after N seconds (0 = run forever).")
+@click.option("--json-out", is_flag=True, help="Print each message as raw JSON.")
+@click.option("--count", "-n", default=0, help="Stop after receiving N messages (0 = unlimited).")
+def pubsub_listen(topic: str, timeout: int, json_out: bool, count: int):
+    """Subscribe and print messages on TOPIC in real-time.
+
+    Blocks until Ctrl-C, --timeout seconds elapse, or --count messages
+    are received. Use wildcards to listen across topic families.
+
+    Examples:
+
+        skcomm pubsub listen agent.*
+
+        skcomm pubsub listen coord.# --timeout 30
+
+        skcomm pubsub listen memory.stored --count 5 --json-out
+    """
+    import signal
+    import time
+
+    from .pubsub import PubSubBroker, PubSubMessage
+
+    broker = PubSubBroker(name="cli-listen")
+    received: list[PubSubMessage] = []
+    stop_event = threading.Event()
+
+    def _handler(msg: PubSubMessage) -> None:
+        received.append(msg)
+        if json_out:
+            click.echo(msg.model_dump_json(indent=2))
+        else:
+            ts = msg.timestamp.strftime("%H:%M:%S")
+            if console:
+                console.print(
+                    f"  [dim]{ts}[/]  [cyan]{msg.topic}[/]  "
+                    f"[dim]from[/] [bold]{msg.sender}[/]  "
+                    f"{msg.payload}"
+                )
+            else:
+                click.echo(f"  {ts}  {msg.topic}  from={msg.sender}  {msg.payload}")
+
+        if count and len(received) >= count:
+            stop_event.set()
+
+    broker.subscribe(topic, _handler)
+
+    if not json_out:
+        _print(f"\n  Listening on [bold cyan]{topic}[/]")
+        _print("  Press Ctrl-C to stop.\n")
+
+    deadline = time.monotonic() + timeout if timeout else None
+
+    def _sigint_handler(sig, frame):  # noqa: ANN001
+        stop_event.set()
+
+    old_handler = signal.signal(signal.SIGINT, _sigint_handler)
+
+    try:
+        while not stop_event.is_set():
+            if deadline and time.monotonic() >= deadline:
+                break
+            time.sleep(0.1)
+    finally:
+        signal.signal(signal.SIGINT, old_handler)
+        broker.unsubscribe(topic, _handler)
+
+    if not json_out:
+        _print(f"\n  Received [bold]{len(received)}[/] message(s).\n")
+
+
+@pubsub_group.command("publish")
+@click.argument("topic")
+@click.argument("payload_json")
+@click.option("--sender", "-s", default=None, help="Sender name (defaults to local identity).")
+@click.option("--config", "-c", default=None, help="Config file path (for identity resolution).")
+def pubsub_publish(topic: str, payload_json: str, sender: Optional[str], config: Optional[str]):
+    """Publish a message to TOPIC with PAYLOAD_JSON.
+
+    PAYLOAD_JSON must be a valid JSON object string.
+    The message is dispatched synchronously to all local subscribers.
+
+    Examples:
+
+        skcomm pubsub publish agent.heartbeat '{\"state\": \"active\"}'
+
+        skcomm pubsub publish memory.stored '{\"content\": \"hello world\"}'
+
+        skcomm pubsub publish coord.task.created '{\"task_id\": \"abc-123\"}' --sender opus
+    """
+    import json as _json
+
+    from .pubsub import PubSubBroker
+
+    try:
+        payload = _json.loads(payload_json)
+    except _json.JSONDecodeError as exc:
+        _print(f"\n  [red]Invalid JSON payload:[/] {exc}\n")
+        raise SystemExit(1)
+
+    if not isinstance(payload, dict):
+        _print("\n  [red]Payload must be a JSON object (dict), not a list or scalar.[/]\n")
+        raise SystemExit(1)
+
+    if not sender:
+        try:
+            from .config import load_config
+            cfg = load_config(config)
+            sender = cfg.identity.name
+        except Exception:
+            sender = "cli"
+
+    broker = PubSubBroker(name="cli-publish")
+    invoked = broker.publish(topic=topic, message=payload, sender=sender)
+
+    _print(f"\n  [green]Published[/] to [bold cyan]{topic}[/]")
+    _print(f"  Sender:      {sender}")
+    _print(f"  Subscribers: {invoked}")
+    _print(f"  Payload:     {payload}\n")
+
+
+@pubsub_group.command("topics")
+@click.option("--pattern", "-p", default=None, help="Filter topics matching this pattern.")
+def pubsub_topics(pattern: Optional[str]):
+    """List active topics with subscriber counts.
+
+    Shows topics that have had at least one message published in this
+    session, along with the number of registered subscribers.
+
+    Examples:
+
+        skcomm pubsub topics
+
+        skcomm pubsub topics --pattern agent.*
+    """
+    import fnmatch
+
+    from .pubsub import PubSubBroker
+
+    broker = PubSubBroker(name="cli-topics")
+    topics = broker.list_topics()
+
+    if pattern:
+        topics = [t for t in topics if fnmatch.fnmatch(t, pattern)]
+
+    if not topics:
+        label = f" matching [bold]{pattern}[/]" if pattern else ""
+        _print(f"\n  [dim]No active topics{label}.[/]")
+        _print("  [dim]Topics appear after at least one message is published.[/]\n")
+        return
+
+    _print(f"\n  [bold]{len(topics)}[/] active topic(s):\n")
+
+    if console:
+        from rich.table import Table as _Table
+
+        table = _Table(show_header=True, header_style="bold", box=None, padding=(0, 2))
+        table.add_column("Topic", style="cyan")
+        table.add_column("Subscribers", justify="right")
+
+        for t in sorted(topics):
+            sub_count = broker.subscriber_count(t)
+            table.add_row(t, str(sub_count))
+
+        console.print(table)
+    else:
+        for t in sorted(topics):
+            sub_count = broker.subscriber_count(t)
+            click.echo(f"  {t:40} subs={sub_count}")
 
     _print("")
 
