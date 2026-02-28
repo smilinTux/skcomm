@@ -33,6 +33,7 @@ BUILTIN_TRANSPORTS: dict[str, str] = {
     "file": "skcomm.transports.file",
     "syncthing": "skcomm.transports.syncthing",
     "nostr": "skcomm.transports.nostr",
+    "websocket": "skcomm.transports.websocket",
 }
 
 
