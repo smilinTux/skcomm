@@ -140,7 +140,10 @@ class PersistentOutbox:
         for entry_path in sorted(self._pending.glob("*.json")):
             try:
                 entry = self._load_entry(entry_path)
-            except Exception:
+            except (json.JSONDecodeError, ValueError, OSError) as exc:
+                logger.warning(
+                    "Skipping corrupt outbox entry %s: %s", entry_path.name, exc
+                )
                 continue
 
             if entry.next_retry_at and entry.next_retry_at > now:
@@ -212,7 +215,11 @@ class PersistentOutbox:
         for entry_path in self._dead.glob("*.json"):
             try:
                 entry = self._load_entry(entry_path)
-            except Exception:
+            except (json.JSONDecodeError, ValueError, OSError) as exc:
+                logger.warning(
+                    "Skipping corrupt dead-letter entry %s: %s",
+                    entry_path.name, exc,
+                )
                 continue
 
             if envelope_id and entry.envelope_id != envelope_id:
@@ -255,8 +262,26 @@ class PersistentOutbox:
             envelope = MessageEnvelope.from_bytes(entry.envelope_json.encode("utf-8"))
             report = self._router.route(envelope)
             return getattr(report, "delivered", False)
+        except (json.JSONDecodeError, ValueError) as exc:
+            entry.last_error = str(exc)
+            logger.warning(
+                "Outbox delivery failed for %s (bad envelope): %s",
+                entry.envelope_id[:8], exc,
+            )
+            return False
+        except OSError as exc:
+            entry.last_error = str(exc)
+            logger.warning(
+                "Outbox delivery failed for %s (I/O error): %s",
+                entry.envelope_id[:8], exc,
+            )
+            return False
         except Exception as exc:
             entry.last_error = str(exc)
+            logger.warning(
+                "Outbox delivery failed for %s: %s",
+                entry.envelope_id[:8], exc,
+            )
             return False
 
     def _compute_next_retry(self, attempt: int) -> datetime:
@@ -322,7 +347,8 @@ class PersistentOutbox:
         for f in sorted(directory.glob("*.json")):
             try:
                 entries.append(self._load_entry(f))
-            except Exception:
+            except (json.JSONDecodeError, ValueError, OSError) as exc:
+                logger.warning("Skipping unreadable entry %s: %s", f.name, exc)
                 continue
         return entries
 

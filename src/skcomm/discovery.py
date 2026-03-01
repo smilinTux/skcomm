@@ -197,9 +197,29 @@ class PeerStore:
         return False
 
     def _peer_path(self, name: str) -> Path:
-        """Sanitized path for a peer YAML file."""
-        safe_name = "".join(c for c in name if c.isalnum() or c in "-_.")
-        return self._dir / f"{safe_name}.yml"
+        """Sanitized path for a peer YAML file.
+
+        Strips unsafe characters and verifies the resolved path stays
+        within the peers directory to prevent path traversal.
+
+        Args:
+            name: Peer name (should already be validated by the API layer).
+
+        Returns:
+            Path to the peer YAML file.
+
+        Raises:
+            ValueError: If the resulting path escapes the peers directory.
+        """
+        safe_name = "".join(c for c in name if c.isalnum() or c in "-_")
+        if not safe_name:
+            raise ValueError(f"Peer name '{name}' is empty after sanitization")
+        result = (self._dir / f"{safe_name}.yml").resolve()
+        if not str(result).startswith(str(self._dir.resolve())):
+            raise ValueError(
+                f"Peer name '{name}' resolves outside peers directory"
+            )
+        return result
 
 
 # ---------------------------------------------------------------------------

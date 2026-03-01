@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import logging
 import time
+from collections import OrderedDict
 from typing import Optional
 
 from .models import MessageEnvelope, RoutingMode, Urgency
@@ -23,6 +24,13 @@ from .transport import (
 
 logger = logging.getLogger("skcomm.router")
 
+# Failure tracking defaults
+FAILURE_THRESHOLD = 3       # consecutive failures before cooldown
+COOLDOWN_SECONDS = 60.0     # seconds to skip a transport after repeated failures
+
+# Deduplication cache limit
+SEEN_IDS_MAX = 10_000
+
 
 class Router:
     """Transport router with multi-mode delivery and automatic failover.
@@ -32,6 +40,10 @@ class Router:
     - broadcast: send via ALL available transports simultaneously
     - stealth: use only high-stealth transports (file, dns_txt, ipfs)
     - speed: use only low-latency transports (netcat, tailscale, iroh)
+
+    Tracks consecutive send failures per transport. After
+    ``FAILURE_THRESHOLD`` failures a transport enters a cooldown period
+    (``COOLDOWN_SECONDS``) during which it is temporarily skipped.
 
     Args:
         transports: List of configured Transport instances.
@@ -48,8 +60,11 @@ class Router:
     ):
         self._transports: list[Transport] = transports or []
         self._default_mode = default_mode
-        self._seen_ids: dict[str, float] = {}
+        self._seen_ids: OrderedDict[str, float] = OrderedDict()
         self._seen_ttl = 7 * 24 * 3600  # 7 days
+
+        # Failure tracking: {transport_name: (consecutive_fail_count, last_fail_time)}
+        self._transport_failures: dict[str, tuple[int, float]] = {}
 
     @property
     def transports(self) -> list[Transport]:
@@ -161,6 +176,7 @@ class Router:
                         continue
                     if env_id:
                         self._seen_ids[env_id] = time.time()
+                        self._seen_ids.move_to_end(env_id)
                     all_data.append(data)
             except Exception:
                 logger.exception("Error receiving from transport '%s'", transport.name)
@@ -186,10 +202,30 @@ class Router:
                 }
         return report
 
+    def _is_in_cooldown(self, transport_name: str) -> bool:
+        """Check whether a transport is in failure cooldown.
+
+        Args:
+            transport_name: Name of the transport to check.
+
+        Returns:
+            True if the transport has exceeded the failure threshold and
+            the cooldown period has not yet elapsed.
+        """
+        entry = self._transport_failures.get(transport_name)
+        if entry is None:
+            return False
+        fail_count, last_fail = entry
+        if fail_count < FAILURE_THRESHOLD:
+            return False
+        return (time.monotonic() - last_fail) < COOLDOWN_SECONDS
+
     def _select_transports(
         self, mode: RoutingMode, envelope: MessageEnvelope
     ) -> list[Transport]:
         """Filter and sort transports for the given routing mode.
+
+        Transports in failure cooldown are excluded from candidates.
 
         Args:
             mode: The routing mode to apply.
@@ -198,7 +234,10 @@ class Router:
         Returns:
             Sorted list of eligible, available transports.
         """
-        available = [t for t in self._transports if t.is_available()]
+        available = [
+            t for t in self._transports
+            if t.is_available() and not self._is_in_cooldown(t.name)
+        ]
 
         if mode == RoutingMode.STEALTH:
             available = [t for t in available if t.category in self.STEALTH_CATEGORIES]
@@ -249,6 +288,36 @@ class Router:
                 report.delivered = True
         return report
 
+    def _record_failure(self, transport_name: str) -> None:
+        """Increment the consecutive failure counter for a transport.
+
+        After ``FAILURE_THRESHOLD`` consecutive failures a warning is
+        logged and the transport enters cooldown.
+
+        Args:
+            transport_name: Name of the transport that failed.
+        """
+        prev = self._transport_failures.get(transport_name, (0, 0.0))
+        new_count = prev[0] + 1
+        now = time.monotonic()
+        self._transport_failures[transport_name] = (new_count, now)
+        if new_count == FAILURE_THRESHOLD:
+            logger.warning(
+                "Transport '%s' hit %d consecutive failures — "
+                "entering %.0fs cooldown",
+                transport_name,
+                FAILURE_THRESHOLD,
+                COOLDOWN_SECONDS,
+            )
+
+    def _record_success(self, transport_name: str) -> None:
+        """Reset the failure counter for a transport after a successful send.
+
+        Args:
+            transport_name: Name of the transport that succeeded.
+        """
+        self._transport_failures.pop(transport_name, None)
+
     def _try_send(
         self, transport: Transport, envelope_bytes: bytes, recipient: str
     ) -> SendResult:
@@ -256,12 +325,17 @@ class Router:
         start = time.monotonic()
         try:
             result = transport.send(envelope_bytes, recipient)
+            if result.success:
+                self._record_success(transport.name)
+            else:
+                self._record_failure(transport.name)
             return result
         except Exception as exc:
             elapsed = (time.monotonic() - start) * 1000
             logger.warning(
                 "Transport '%s' failed: %s", transport.name, exc
             )
+            self._record_failure(transport.name)
             return SendResult(
                 success=False,
                 transport_name=transport.name,
@@ -281,8 +355,16 @@ class Router:
             return None
 
     def _prune_seen_ids(self) -> None:
-        """Remove expired entries from the deduplication cache."""
+        """Remove expired and excess entries from the deduplication cache.
+
+        Evicts TTL-expired entries first, then removes oldest entries
+        if the cache exceeds ``SEEN_IDS_MAX`` to prevent unbounded growth.
+        """
         now = time.time()
+        # Remove TTL-expired entries
         expired = [eid for eid, ts in self._seen_ids.items() if now - ts > self._seen_ttl]
         for eid in expired:
             del self._seen_ids[eid]
+        # Evict oldest entries if cache exceeds max size (LRU eviction)
+        while len(self._seen_ids) > SEEN_IDS_MAX:
+            self._seen_ids.popitem(last=False)

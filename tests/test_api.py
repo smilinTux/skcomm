@@ -412,3 +412,187 @@ class TestPresenceEndpoint:
         data = response.json()
         assert data["status"] == "away"
         assert data["message"] is None
+
+
+class TestPeerNameValidation:
+    """Tests for path traversal protection on peer endpoints."""
+
+    def test_add_peer_rejects_path_traversal(self, client, tmp_path, monkeypatch):
+        """Security: POST /peers rejects names with path traversal sequences."""
+        from skcomm.discovery import PeerStore
+
+        peers_dir = tmp_path / "peers"
+        peers_dir.mkdir()
+        original_init = PeerStore.__init__
+
+        def patched_init(self, peers_dir_arg=None):
+            original_init(self, peers_dir=peers_dir)
+
+        monkeypatch.setattr(PeerStore, "__init__", patched_init)
+
+        response = client.post(
+            "/api/v1/peers",
+            json={
+                "name": "../../etc/passwd",
+                "address": "/comms",
+                "transport": "syncthing",
+            },
+        )
+        assert response.status_code == 400
+        assert "Invalid peer name" in response.json()["detail"]
+
+    def test_add_peer_rejects_dot_dot(self, client, tmp_path, monkeypatch):
+        """Security: POST /peers rejects '..' as a name."""
+        from skcomm.discovery import PeerStore
+
+        peers_dir = tmp_path / "peers"
+        peers_dir.mkdir()
+        original_init = PeerStore.__init__
+
+        def patched_init(self, peers_dir_arg=None):
+            original_init(self, peers_dir=peers_dir)
+
+        monkeypatch.setattr(PeerStore, "__init__", patched_init)
+
+        response = client.post(
+            "/api/v1/peers",
+            json={"name": "..", "address": "/comms", "transport": "syncthing"},
+        )
+        assert response.status_code == 400
+
+    def test_add_peer_rejects_backslash(self, client, tmp_path, monkeypatch):
+        """Security: POST /peers rejects names with backslashes."""
+        from skcomm.discovery import PeerStore
+
+        peers_dir = tmp_path / "peers"
+        peers_dir.mkdir()
+        original_init = PeerStore.__init__
+
+        def patched_init(self, peers_dir_arg=None):
+            original_init(self, peers_dir=peers_dir)
+
+        monkeypatch.setattr(PeerStore, "__init__", patched_init)
+
+        response = client.post(
+            "/api/v1/peers",
+            json={
+                "name": "..\\..\\etc\\shadow",
+                "address": "/comms",
+                "transport": "syncthing",
+            },
+        )
+        assert response.status_code == 400
+
+    def test_add_peer_rejects_slash(self, client, tmp_path, monkeypatch):
+        """Security: POST /peers rejects names with forward slashes."""
+        from skcomm.discovery import PeerStore
+
+        peers_dir = tmp_path / "peers"
+        peers_dir.mkdir()
+        original_init = PeerStore.__init__
+
+        def patched_init(self, peers_dir_arg=None):
+            original_init(self, peers_dir=peers_dir)
+
+        monkeypatch.setattr(PeerStore, "__init__", patched_init)
+
+        response = client.post(
+            "/api/v1/peers",
+            json={"name": "foo/bar", "address": "/comms", "transport": "syncthing"},
+        )
+        assert response.status_code == 400
+
+    def test_add_peer_rejects_empty_name(self, client, tmp_path, monkeypatch):
+        """Security: POST /peers rejects empty names."""
+        from skcomm.discovery import PeerStore
+
+        peers_dir = tmp_path / "peers"
+        peers_dir.mkdir()
+        original_init = PeerStore.__init__
+
+        def patched_init(self, peers_dir_arg=None):
+            original_init(self, peers_dir=peers_dir)
+
+        monkeypatch.setattr(PeerStore, "__init__", patched_init)
+
+        response = client.post(
+            "/api/v1/peers",
+            json={"name": "", "address": "/comms", "transport": "syncthing"},
+        )
+        assert response.status_code == 400
+
+    def test_add_peer_allows_hyphens_underscores(self, client, tmp_path, monkeypatch):
+        """Expected: POST /peers allows valid names with hyphens and underscores."""
+        from skcomm.discovery import PeerStore
+
+        peers_dir = tmp_path / "peers"
+        peers_dir.mkdir()
+        original_init = PeerStore.__init__
+
+        def patched_init(self, peers_dir_arg=None):
+            original_init(self, peers_dir=peers_dir)
+
+        monkeypatch.setattr(PeerStore, "__init__", patched_init)
+
+        response = client.post(
+            "/api/v1/peers",
+            json={
+                "name": "agent-01_test",
+                "address": "/comms",
+                "transport": "syncthing",
+            },
+        )
+        assert response.status_code == 201
+        assert response.json()["name"] == "agent-01_test"
+
+    def test_delete_peer_rejects_path_traversal(self, client, tmp_path, monkeypatch):
+        """Security: DELETE /peers/<name> rejects path traversal names."""
+        from skcomm.discovery import PeerStore
+
+        peers_dir = tmp_path / "peers"
+        peers_dir.mkdir()
+        original_init = PeerStore.__init__
+
+        def patched_init(self, peers_dir_arg=None):
+            original_init(self, peers_dir=peers_dir)
+
+        monkeypatch.setattr(PeerStore, "__init__", patched_init)
+
+        # Names with dots (potential traversal component) are rejected
+        response = client.delete("/api/v1/peers/..passwd")
+        assert response.status_code == 400
+
+    def test_delete_peer_rejects_special_chars(self, client, tmp_path, monkeypatch):
+        """Security: DELETE /peers/<name> rejects names with special characters."""
+        from skcomm.discovery import PeerStore
+
+        peers_dir = tmp_path / "peers"
+        peers_dir.mkdir()
+        original_init = PeerStore.__init__
+
+        def patched_init(self, peers_dir_arg=None):
+            original_init(self, peers_dir=peers_dir)
+
+        monkeypatch.setattr(PeerStore, "__init__", patched_init)
+
+        response = client.delete("/api/v1/peers/$evil")
+        assert response.status_code == 400
+
+    def test_add_peer_rejects_dot_name(self, client, tmp_path, monkeypatch):
+        """Security: POST /peers rejects '.' as a name."""
+        from skcomm.discovery import PeerStore
+
+        peers_dir = tmp_path / "peers"
+        peers_dir.mkdir()
+        original_init = PeerStore.__init__
+
+        def patched_init(self, peers_dir_arg=None):
+            original_init(self, peers_dir=peers_dir)
+
+        monkeypatch.setattr(PeerStore, "__init__", patched_init)
+
+        response = client.post(
+            "/api/v1/peers",
+            json={"name": ".", "address": "/comms", "transport": "syncthing"},
+        )
+        assert response.status_code == 400

@@ -29,6 +29,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import queue
 import threading
 import time
@@ -45,7 +46,9 @@ from ..transport import (
 
 logger = logging.getLogger("skcomm.transports.webrtc")
 
-DEFAULT_SIGNALING_URL = "ws://localhost:9384/webrtc/ws"
+DEFAULT_SIGNALING_URL = os.environ.get(
+    "SKCOMM_SIGNALING_URL", "ws://localhost:9384/webrtc/ws"
+)
 CHANNEL_NAME = "skcomm"
 ICE_GATHER_TIMEOUT = 30.0    # seconds to wait for ICE gathering
 RECV_TIMEOUT = 1.0            # seconds for signaling recv poll
@@ -227,13 +230,16 @@ class WebRTCTransport(Transport):
 
         with self._peers_lock:
             peer = self._peers.get(recipient)
+            # Snapshot connection state under lock to avoid races
+            is_connected = peer.connected if peer else False
+            channel = peer.channel if peer else None
+            is_negotiating = peer.negotiating if peer else False
 
-        if peer and peer.connected and peer.channel:
+        if is_connected and channel:
             # Happy path: data channel is open
             try:
-                future = asyncio.run_coroutine_threadsafe(
-                    self._async_channel_send(peer.channel, envelope_bytes),
-                    self._loop,
+                future = self._run_in_loop(
+                    self._async_channel_send(channel, envelope_bytes),
                 )
                 future.result(timeout=SEND_TIMEOUT)
                 elapsed = (time.monotonic() - start) * 1000
@@ -264,7 +270,7 @@ class WebRTCTransport(Transport):
                 )
 
         # No open connection — schedule ICE negotiation, return failure
-        if not peer or not peer.negotiating:
+        if not peer or not is_negotiating:
             self._schedule_offer(recipient)
 
         elapsed = (time.monotonic() - start) * 1000
@@ -363,11 +369,17 @@ class WebRTCTransport(Transport):
 
         if self._loop and not self._loop.is_closed():
             try:
-                future = asyncio.run_coroutine_threadsafe(self._async_stop(), self._loop)
+                future = self._run_in_loop(self._async_stop())
                 future.result(timeout=5.0)
+            except RuntimeError:
+                # Loop already stopped — skip async cleanup
+                pass
             except Exception:
                 pass
-            self._loop.call_soon_threadsafe(self._loop.stop)
+            try:
+                self._loop.call_soon_threadsafe(self._loop.stop)
+            except RuntimeError:
+                pass
 
         if self._loop_thread and self._loop_thread.is_alive():
             self._loop_thread.join(timeout=5.0)
@@ -471,14 +483,7 @@ class WebRTCTransport(Transport):
         elif msg_type == "peer_left":
             peer_id = msg.get("peer", "")
             if peer_id:
-                with self._peers_lock:
-                    peer = self._peers.pop(peer_id, None)
-                if peer:
-                    try:
-                        await peer.pc.close()
-                    except Exception:
-                        pass
-                    logger.info("WebRTC: peer %s left — connection closed", peer_id[:8])
+                await self._cleanup_peer(peer_id)
 
         elif msg_type == "signal":
             from_id = msg.get("from", "")
@@ -729,16 +734,37 @@ class WebRTCTransport(Transport):
         """
         channel.send(data)
 
-    async def _async_stop(self) -> None:
-        """Async cleanup: close all peer connections and signaling WS."""
-        with self._peers_lock:
-            peers = list(self._peers.values())
+    async def _cleanup_peer(self, peer_id: str) -> None:
+        """Remove a single peer connection and close its RTCPeerConnection.
 
-        for peer in peers:
+        Acquires ``_peers_lock`` to safely remove the peer from the dict,
+        preventing modification while another thread may be iterating.
+
+        Args:
+            peer_id: PGP fingerprint of the peer to clean up.
+        """
+        with self._peers_lock:
+            peer = self._peers.pop(peer_id, None)
+
+        if peer:
             try:
                 await peer.pc.close()
             except Exception:
                 pass
+            logger.info("WebRTC: peer %s cleaned up", peer_id[:8])
+
+    async def _async_stop(self) -> None:
+        """Async cleanup: close all peer connections and signaling WS.
+
+        Copies peer keys under lock before iterating, so that concurrent
+        ``_cleanup_peer`` or ``_on_datachannel`` calls do not cause a
+        ``RuntimeError: dictionary changed size during iteration``.
+        """
+        with self._peers_lock:
+            peer_ids = list(self._peers.keys())
+
+        for pid in peer_ids:
+            await self._cleanup_peer(pid)
 
         if self._signaling_ws:
             try:
@@ -749,6 +775,32 @@ class WebRTCTransport(Transport):
     # ──────────────────────────────────────────────────────────────────────
     # Threading bridge
     # ──────────────────────────────────────────────────────────────────────
+
+    def _run_in_loop(self, coro) -> "asyncio.Future":
+        """Submit a coroutine to the background asyncio loop from a sync thread.
+
+        Guards against submitting work to a closed or stopped loop, which
+        would otherwise silently drop the coroutine or raise an obscure error.
+
+        Args:
+            coro: Awaitable coroutine to schedule on the event loop.
+
+        Returns:
+            A concurrent.futures.Future representing the result.
+
+        Raises:
+            RuntimeError: If the background event loop is not running (stopped
+                or closed), so callers get a clear error instead of a hang.
+        """
+        loop = self._loop
+        if loop is None or loop.is_closed() or not loop.is_running():
+            # Close the coroutine to avoid "coroutine was never awaited" warning
+            coro.close()
+            raise RuntimeError(
+                "WebRTC background event loop is not running — "
+                "cannot submit async work (loop closed or stopped)"
+            )
+        return asyncio.run_coroutine_threadsafe(coro, loop)
 
     def _schedule_offer(self, peer_id: str) -> None:
         """Schedule a WebRTC offer to a peer from the synchronous side.
@@ -770,10 +822,10 @@ class WebRTCTransport(Transport):
                 self._peers[peer_id] = PeerConnection(
                     peer_fingerprint=peer_id, pc=None, negotiating=True
                 )
-        asyncio.run_coroutine_threadsafe(
-            self._initiate_offer(peer_id),
-            self._loop,
-        )
+        try:
+            self._run_in_loop(self._initiate_offer(peer_id))
+        except RuntimeError:
+            logger.warning("WebRTC: cannot schedule offer — event loop not running")
 
     # ──────────────────────────────────────────────────────────────────────
     # ICE server configuration

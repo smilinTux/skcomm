@@ -14,6 +14,7 @@ Run from CLI:
 from __future__ import annotations
 
 import logging
+import re
 from collections import defaultdict
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
@@ -22,6 +23,7 @@ from typing import Optional
 
 from fastapi import FastAPI, HTTPException, WebSocket, status
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
 from pydantic import BaseModel, Field
 
 from .capauth_validator import CapAuthValidator
@@ -98,6 +100,32 @@ app.add_middleware(
 )
 
 
+class _PrivateNetworkAccessMiddleware(BaseHTTPMiddleware):
+    """Return Access-Control-Allow-Private-Network: true on PNA preflights.
+
+    Chrome/Brave enforce the Private Network Access spec: when an extension
+    service worker fetches a localhost URL it first sends an OPTIONS preflight
+    with Access-Control-Request-Private-Network: true.  FastAPI's CORS
+    middleware doesn't handle this header, so it returns 400.  This wrapper
+    intercepts those preflights and approves them.
+    """
+
+    async def dispatch(self, request, call_next):
+        if (
+            request.method == "OPTIONS"
+            and request.headers.get("access-control-request-private-network") == "true"
+        ):
+            response = await call_next(request)
+            response.headers["Access-Control-Allow-Private-Network"] = "true"
+            if response.status_code >= 400:
+                response.status_code = 204
+            return response
+        return await call_next(request)
+
+
+app.add_middleware(_PrivateNetworkAccessMiddleware)
+
+
 def get_skcomm() -> SKComm:
     """Get or create the global SKComm instance.
 
@@ -123,6 +151,37 @@ def get_skcomm() -> SKComm:
                 detail=f"Failed to initialize SKComm: {exc}",
             ) from exc
     return _skcomm
+
+
+# Peer name: alphanumeric, hyphens, underscores. 1-64 chars.
+_PEER_NAME_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$")
+
+
+def _validate_peer_name(name: str) -> str:
+    """Validate a peer name for safe use in file paths.
+
+    Rejects names containing path traversal sequences or characters that
+    could escape the peers directory.
+
+    Args:
+        name: Raw peer name from the request.
+
+    Returns:
+        The validated name (unchanged).
+
+    Raises:
+        HTTPException: 400 if the name is invalid.
+    """
+    if not _PEER_NAME_RE.match(name):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                f"Invalid peer name '{name}': must be 1-64 alphanumeric "
+                "characters, hyphens, or underscores, starting with an "
+                "alphanumeric character"
+            ),
+        )
+    return name
 
 
 class SendMessageRequest(BaseModel):
@@ -548,6 +607,8 @@ async def add_peer(request: PeerAddRequest):
     """
     from .discovery import PeerTransport
 
+    _validate_peer_name(request.name)
+
     try:
         transport_settings: dict = {}
         if request.transport == "syncthing":
@@ -604,8 +665,10 @@ async def remove_peer(name: str):
         name: Peer name to remove.
 
     Raises:
+        HTTPException: 400 if the name is invalid.
         HTTPException: 404 if the peer does not exist.
     """
+    _validate_peer_name(name)
     store = PeerStore()
     removed = store.remove(name)
     if not removed:
@@ -1174,3 +1237,33 @@ async def update_presence(request: PresenceRequest):
         "broadcast": peer_results,
         "errors": peer_errors,
     }
+
+
+# ---------------------------------------------------------------------------
+# Profile API router (sovereign agent profile access)
+# ---------------------------------------------------------------------------
+
+try:
+    from .profile_router import profile_router as _profile_router
+
+    app.include_router(_profile_router)
+    logger.info("Profile API router registered at /api/v1/profile")
+except ImportError:
+    logger.debug("Profile router not available (missing dependencies)")
+except Exception as _exc:
+    logger.warning("Failed to register profile router: %s", _exc)
+
+
+# ---------------------------------------------------------------------------
+# PWA static files mount (skprofile-pwa)
+# ---------------------------------------------------------------------------
+
+try:
+    from starlette.staticfiles import StaticFiles as _StaticFiles
+
+    _pwa_dir = Path(__file__).resolve().parent.parent.parent.parent / "skprofile-pwa"
+    if _pwa_dir.is_dir():
+        app.mount("/app", _StaticFiles(directory=str(_pwa_dir), html=True), name="pwa")
+        logger.info("PWA mounted at /app from %s", _pwa_dir)
+except Exception as _exc:
+    logger.debug("PWA static mount skipped: %s", _exc)
