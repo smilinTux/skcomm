@@ -372,6 +372,32 @@ capauth status             # Check your CapAuth profile and advocate status
 
 ---
 
+## Environment Variables
+
+### `SKCOMM_DEV_AUTH`
+
+**What it does**: Disables CapAuth PGP signature verification for the WebRTC signaling broker.
+
+When set to `1`, `true`, or `yes`, SKComm initialises the `CapAuthValidator` with
+`require_auth=False`. In this mode:
+
+- Plain 40-hex PGP fingerprints are accepted as tokens **without any signature or timestamp check**
+- Peers with no token are accepted as `"anonymous"`
+- The server logs a `WARNING` at startup: `SKCOMM_DEV_AUTH=1 — CapAuth signature check DISABLED`
+
+**When to use it**: Local development only, when agents haven't yet exchanged signed keys and you
+want to bring up the signaling stack quickly.
+
+```bash
+SKCOMM_DEV_AUTH=1 skcomm serve
+```
+
+> **WARNING: Never set `SKCOMM_DEV_AUTH` in production.**
+> It completely bypasses identity verification — any peer can claim any fingerprint.
+> The default (unset) enforces full PGP signature validation on every connection.
+
+---
+
 ## Architecture
 
 ```

@@ -10,7 +10,7 @@ readme = "README.md"
 license = {text = "GPL-3.0-or-later"}
 requires-python = ">=3.10"
 authors = [
-    {name = "smilinTux", email = "admin@smilintux.org"},
+    {name = "smilinTux.org", email = "hello@smilintux.org"},
 ]
 keywords = [
     "ai", "agent", "communication", "p2p", "encrypted",
@@ -88,6 +88,7 @@ dev = [
 
 [project.scripts]
 skcomm = "skcomm.cli:main"
+skcomm-mcp = "skcomm.mcp_server:main"
 
 [project.urls]
 Homepage = "https://smilintux.org"
