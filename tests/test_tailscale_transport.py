@@ -10,6 +10,8 @@ from unittest.mock import MagicMock, call, patch
 
 import pytest
 
+pytest.importorskip("skcomm.transports.tailscale")
+
 from skcomm.models import MessageEnvelope, MessagePayload
 from skcomm.transport import TransportCategory, TransportStatus
 from skcomm.transports.tailscale import (

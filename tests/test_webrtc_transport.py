@@ -12,6 +12,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+pytest.importorskip("aiortc")
+
 from skcomm.models import MessageEnvelope, MessagePayload
 from skcomm.transport import TransportCategory, TransportStatus
 from skcomm.transports.webrtc import (
