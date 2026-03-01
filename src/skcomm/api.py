@@ -65,11 +65,34 @@ async def lifespan(app: FastAPI):
     # SKCOMM_DEV_AUTH=1 in the environment — this flips require_auth=False
     # which accepts plain 40-hex fingerprints with no signature check.
     import os as _os
-    dev_auth = _os.environ.get("SKCOMM_DEV_AUTH", "").lower() in {"1", "true", "yes"}
+    import sys as _sys
+
+    # SECURITY: SKCOMM_DEV_AUTH disables CapAuth PGP signature verification
+    # on WebSocket signaling connections. This means ANY 40-hex string is
+    # accepted as a valid fingerprint with NO cryptographic proof of identity.
+    # An attacker on the same network can impersonate any agent.
+    # Accepted values: "1", "true", "yes", "i_know_what_im_doing"
+    # This MUST NEVER be set in production deployments.
+    dev_auth_val = _os.environ.get("SKCOMM_DEV_AUTH", "").lower()
+    dev_auth = dev_auth_val in {"1", "true", "yes", "i_know_what_im_doing"}
     if dev_auth:
+        _dev_banner = (
+            "\n"
+            "========================================================\n"
+            "  WARNING: SKCOMM_DEV_AUTH is SET -- AUTH DISABLED\n"
+            "\n"
+            "  CapAuth PGP signature verification is OFF.\n"
+            "  Any 40-hex string is accepted as a valid fingerprint.\n"
+            "  An attacker on the network can impersonate any agent.\n"
+            "\n"
+            "  DO NOT run with this setting in production.\n"
+            "========================================================\n"
+        )
+        print(_dev_banner, file=_sys.stderr, flush=True)
         logger.warning(
-            "WebRTC signaling: SKCOMM_DEV_AUTH=1 — CapAuth signature check DISABLED. "
-            "Do NOT use in production."
+            "WebRTC signaling: SKCOMM_DEV_AUTH=%s -- CapAuth signature check DISABLED. "
+            "Do NOT use in production.",
+            dev_auth_val,
         )
     _broker = SignalingBroker(
         validator=CapAuthValidator(require_auth=not dev_auth),
@@ -515,6 +538,91 @@ async def get_conversations():
     ]
 
 
+class ConversationDetailResponse(BaseModel):
+    """Response model for a single conversation with messages."""
+
+    conversation_id: str
+    participants: list[str]
+    message_count: int
+    messages: list[MessageEnvelopeResponse]
+
+
+@app.get(
+    "/api/v1/conversation/{conversation_id}",
+    response_model=ConversationDetailResponse,
+    tags=["messaging"],
+)
+async def get_conversation(
+    conversation_id: str,
+    limit: int = 50,
+    offset: int = 0,
+):
+    """Get messages for a specific conversation.
+
+    Retrieves messages belonging to the given conversation / thread ID.
+    Messages are matched by thread_id or by the ``sender:recipient`` pair
+    key that the conversations endpoint uses as a fallback.
+
+    Args:
+        conversation_id: Thread ID or ``sender:recipient`` pair key.
+        limit: Maximum number of messages to return (default 50).
+        offset: Number of messages to skip for pagination (default 0).
+
+    Returns:
+        ConversationDetailResponse with conversation metadata and messages.
+    """
+    try:
+        outbox = PersistentOutbox()
+        all_entries = outbox.list_pending() + outbox.list_dead()
+    except Exception as exc:
+        logger.warning("Could not read outbox for conversation: %s", exc)
+        all_entries = []
+
+    # Collect envelopes that belong to this conversation.
+    participants: set[str] = set()
+    matched: list[tuple[datetime, MessageEnvelopeResponse]] = []
+
+    for entry in all_entries:
+        try:
+            env = MessageEnvelope.from_bytes(entry.envelope_json.encode())
+            key = env.metadata.thread_id or f"{env.sender}:{env.recipient}"
+            if key != conversation_id:
+                continue
+            participants.update([env.sender, env.recipient])
+            matched.append((
+                env.metadata.created_at,
+                MessageEnvelopeResponse(
+                    envelope_id=env.envelope_id,
+                    sender=env.sender,
+                    recipient=env.recipient,
+                    content=env.payload.content,
+                    content_type=env.payload.content_type,
+                    encrypted=env.payload.encrypted,
+                    compressed=env.payload.compressed,
+                    signature=env.payload.signature,
+                    thread_id=env.metadata.thread_id,
+                    in_reply_to=env.metadata.in_reply_to,
+                    urgency=env.metadata.urgency,
+                    created_at=env.metadata.created_at,
+                    is_ack=env.is_ack,
+                ),
+            ))
+        except Exception:
+            continue
+
+    # Sort oldest-first, then apply pagination.
+    matched.sort(key=lambda x: x[0])
+    total = len(matched)
+    page = matched[offset : offset + limit]
+
+    return ConversationDetailResponse(
+        conversation_id=conversation_id,
+        participants=sorted(participants),
+        message_count=total,
+        messages=[msg for _, msg in page],
+    )
+
+
 @app.get(
     "/api/v1/agents",
     response_model=list[AgentResponse],
@@ -687,8 +795,9 @@ def _get_broker() -> SignalingBroker:
     """Get or lazily create the global SignalingBroker.
 
     Auth is controlled by the ``SKCOMM_DEV_AUTH`` environment variable:
-    unset (default) → ``require_auth=True`` (PGP verification enforced).
-    ``SKCOMM_DEV_AUTH=1`` → ``require_auth=False`` (dev mode, no sig check).
+    unset (default) -> ``require_auth=True`` (PGP verification enforced).
+    ``SKCOMM_DEV_AUTH=1`` or ``SKCOMM_DEV_AUTH=I_KNOW_WHAT_IM_DOING``
+    -> ``require_auth=False`` (dev mode, no sig check).
 
     Returns:
         SignalingBroker: Shared broker instance.
@@ -696,7 +805,8 @@ def _get_broker() -> SignalingBroker:
     global _broker
     if _broker is None:
         import os as _os
-        dev_auth = _os.environ.get("SKCOMM_DEV_AUTH", "").lower() in {"1", "true", "yes"}
+        dev_auth_val = _os.environ.get("SKCOMM_DEV_AUTH", "").lower()
+        dev_auth = dev_auth_val in {"1", "true", "yes", "i_know_what_im_doing"}
         _broker = SignalingBroker(validator=CapAuthValidator(require_auth=not dev_auth))
     return _broker
 

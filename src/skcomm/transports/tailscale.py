@@ -97,7 +97,7 @@ class TailscaleTransport(Transport):
         self._lifecycle_lock = threading.Lock()  # guards start/stop state transitions
         self._server_socket: Optional[socket.socket] = None
         self._server_thread: Optional[threading.Thread] = None
-        self._inbox: queue.Queue[bytes] = queue.Queue()
+        self._inbox: queue.Queue[bytes] = queue.Queue(maxsize=10000)
 
         # Cached peer Tailscale IPs: name/fingerprint → 100.x.x.x
         self._peer_ips: dict[str, str] = {}
@@ -383,7 +383,16 @@ class TailscaleTransport(Transport):
 
             data = self._recv_exact(conn, msg_len)
             if len(data) == msg_len:
-                self._inbox.put(data)
+                try:
+                    self._inbox.put_nowait(data)
+                except queue.Full:
+                    logger.warning(
+                        "Tailscale: inbox full (maxsize=%d), dropping %d-byte message from %s",
+                        self._inbox.maxsize,
+                        msg_len,
+                        addr[0],
+                    )
+                    return
                 logger.debug(
                     "Tailscale: buffered %d-byte envelope from %s", msg_len, addr[0]
                 )
@@ -499,11 +508,13 @@ class TailscaleTransport(Transport):
     def _peer_ip_from_tailscale_status(self, recipient: str) -> Optional[str]:
         """Discover a peer's Tailscale IP by querying ``tailscale status --json``.
 
-        Matches the recipient string against peer ``HostName`` and ``DNSName``
-        fields (case-insensitive substring match).
+        Matches the recipient string against peer ``HostName`` (exact match,
+        case-insensitive) and ``DNSName`` (recipient must be the first label
+        before the first dot). This prevents false positives from substring
+        matching (e.g. "ops" matching "devops-server").
 
         Args:
-            recipient: Partial hostname or agent name to match.
+            recipient: Hostname or agent name to match exactly.
 
         Returns:
             First matching 100.x.x.x IP, or None.
@@ -524,7 +535,9 @@ class TailscaleTransport(Transport):
                 dns_name = info.get("DNSName", "").lower()
                 recipient_lower = recipient.lower()
 
-                if recipient_lower in hostname or recipient_lower in dns_name:
+                # Exact match on hostname, or dns_name starts with recipient + "."
+                # (e.g. recipient "opus" matches dns_name "opus.tail1234.ts.net.")
+                if recipient_lower == hostname or dns_name.startswith(recipient_lower + "."):
                     for ip in info.get("TailscaleIPs", []):
                         if ip.startswith("100."):
                             return ip

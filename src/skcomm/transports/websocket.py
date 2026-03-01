@@ -99,7 +99,7 @@ class WebSocketTransport(Transport):
 
         self._send_lock = threading.Lock()          # Serialises concurrent sends
         self._conn_lock = threading.Lock()          # Protects _ws reference
-        self._inbox: queue.Queue[bytes] = queue.Queue()
+        self._inbox: queue.Queue[bytes] = queue.Queue(maxsize=10000)
         self._recv_thread: Optional[threading.Thread] = None
 
         if auto_connect:
@@ -408,7 +408,15 @@ class WebSocketTransport(Transport):
                     if isinstance(data, str):
                         data = data.encode()
 
-                    self._inbox.put(data)
+                    try:
+                        self._inbox.put_nowait(data)
+                    except queue.Full:
+                        logger.warning(
+                            "WebSocket: inbox full (maxsize=%d), dropping %d-byte message",
+                            self._inbox.maxsize,
+                            len(data),
+                        )
+                        continue
                     logger.debug("Buffered WebSocket message (%d bytes)", len(data))
 
             finally:

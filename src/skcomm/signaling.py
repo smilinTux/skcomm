@@ -26,6 +26,8 @@ from __future__ import annotations
 
 import json
 import logging
+import time
+from collections import defaultdict
 from typing import TYPE_CHECKING, Optional
 
 from .capauth_validator import CapAuthValidator
@@ -34,6 +36,11 @@ if TYPE_CHECKING:
     from fastapi import WebSocket
 
 logger = logging.getLogger("skcomm.signaling")
+
+# Rate limiting defaults
+MAX_MESSAGES_PER_MINUTE = 60   # Per-peer message rate limit
+MAX_PEERS_PER_ROOM = 50        # Maximum concurrent connections per room
+RATE_WINDOW_SECONDS = 60.0     # Sliding window for rate counting
 
 
 class WebRTCRoom:
@@ -50,6 +57,8 @@ class WebRTCRoom:
     def __init__(self, room_id: str) -> None:
         self.room_id = room_id
         self._peers: dict[str, "WebSocket"] = {}
+        # Per-peer rate limiting: fingerprint -> list of message timestamps
+        self._message_timestamps: dict[str, list[float]] = defaultdict(list)
 
     @property
     def peer_ids(self) -> list[str]:
@@ -57,9 +66,47 @@ class WebRTCRoom:
         return list(self._peers.keys())
 
     @property
+    def peer_count(self) -> int:
+        """Number of currently connected peers."""
+        return len(self._peers)
+
+    @property
     def is_empty(self) -> bool:
         """True if no peers are currently connected."""
         return len(self._peers) == 0
+
+    @property
+    def is_full(self) -> bool:
+        """True if the room has reached the maximum number of peers."""
+        return len(self._peers) >= MAX_PEERS_PER_ROOM
+
+    def is_rate_limited(self, fingerprint: str) -> bool:
+        """Check if a peer has exceeded the per-minute message rate limit.
+
+        Prunes timestamps older than the rate window before checking.
+
+        Args:
+            fingerprint: PGP fingerprint of the peer to check.
+
+        Returns:
+            True if the peer should be rate-limited.
+        """
+        now = time.monotonic()
+        cutoff = now - RATE_WINDOW_SECONDS
+        timestamps = self._message_timestamps[fingerprint]
+        # Prune old timestamps outside the window
+        self._message_timestamps[fingerprint] = [
+            ts for ts in timestamps if ts > cutoff
+        ]
+        return len(self._message_timestamps[fingerprint]) >= MAX_MESSAGES_PER_MINUTE
+
+    def record_message(self, fingerprint: str) -> None:
+        """Record a message timestamp for rate-limiting purposes.
+
+        Args:
+            fingerprint: PGP fingerprint of the sending peer.
+        """
+        self._message_timestamps[fingerprint].append(time.monotonic())
 
     async def add_peer(self, fingerprint: str, ws: "WebSocket") -> None:
         """Register a new peer and notify existing peers.
@@ -97,6 +144,7 @@ class WebRTCRoom:
             fingerprint: PGP fingerprint of the leaving peer.
         """
         self._peers.pop(fingerprint, None)
+        self._message_timestamps.pop(fingerprint, None)
         await self._notify_others(
             sender=fingerprint,
             message={"type": "peer_left", "peer": fingerprint},
@@ -253,12 +301,34 @@ class SignalingBroker:
         them, and cleans up on disconnect. The peer_id has already been
         authenticated by the route handler before this is called.
 
+        Enforces:
+            - Max peers per room (MAX_PEERS_PER_ROOM). Connection is
+              rejected with WS close code 4429 if the room is full.
+            - Per-peer message rate limit (MAX_MESSAGES_PER_MINUTE).
+              Excess messages are dropped with a warning sent to the peer.
+
         Args:
             ws: The accepted WebSocket connection.
             room_id: Room to join (e.g. ``"skcomm-CCBE9306410CF8CD"``).
             peer_id: Authenticated PGP fingerprint of this peer.
         """
         room = self.get_or_create_room(room_id)
+
+        # Enforce max connections per room
+        if room.is_full:
+            logger.warning(
+                "Room %s full (%d/%d peers) — rejecting peer %s",
+                room_id,
+                room.peer_count,
+                MAX_PEERS_PER_ROOM,
+                peer_id[:8],
+            )
+            await ws.close(
+                code=4429,
+                reason=f"Room full ({MAX_PEERS_PER_ROOM} peers max)",
+            )
+            return
+
         await room.add_peer(peer_id, ws)
 
         try:
@@ -270,6 +340,29 @@ class SignalingBroker:
                     logger.warning("Malformed JSON signal from peer %s", peer_id[:8])
                     continue
 
+                # Enforce per-peer rate limit
+                if room.is_rate_limited(peer_id):
+                    logger.warning(
+                        "Rate limit exceeded for peer %s in room %s "
+                        "(%d msgs/min max) — dropping message",
+                        peer_id[:8],
+                        room_id,
+                        MAX_MESSAGES_PER_MINUTE,
+                    )
+                    try:
+                        await ws.send_text(json.dumps({
+                            "type": "error",
+                            "code": "RATE_LIMITED",
+                            "message": (
+                                f"Rate limit exceeded: max {MAX_MESSAGES_PER_MINUTE} "
+                                f"messages per {int(RATE_WINDOW_SECONDS)}s"
+                            ),
+                        }))
+                    except Exception:
+                        pass
+                    continue
+
+                room.record_message(peer_id)
                 msg_type = msg.get("type")
 
                 if msg_type == "signal":

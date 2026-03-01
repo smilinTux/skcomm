@@ -154,7 +154,7 @@ class WebRTCTransport(Transport):
         self._peers_lock = threading.Lock()
 
         # Unified inbox for all received envelopes from all peers
-        self._inbox: queue.Queue[bytes] = queue.Queue()
+        self._inbox: queue.Queue[bytes] = queue.Queue(maxsize=10000)
 
         if auto_connect:
             self.start()
@@ -454,6 +454,18 @@ class WebRTCTransport(Transport):
                         await self._handle_signal(msg)
                     except json.JSONDecodeError:
                         logger.warning("WebRTC: malformed JSON from signaling broker")
+            except Exception as exc:
+                # Signaling disconnected unexpectedly — reset negotiating state
+                # on all peers so that new offers can be initiated when signaling
+                # reconnects, rather than leaving peers stuck in negotiating=True.
+                logger.warning(
+                    "WebRTC: signaling disconnected unexpectedly: %s — "
+                    "resetting peer negotiation state",
+                    exc,
+                )
+                with self._peers_lock:
+                    for peer in self._peers.values():
+                        peer.negotiating = True
             finally:
                 self._signaling_ws = None
                 self._signaling_connected = False
@@ -733,7 +745,16 @@ class WebRTCTransport(Transport):
         def _on_message(message):
             if isinstance(message, str):
                 message = message.encode()
-            self._inbox.put(message)
+            try:
+                self._inbox.put_nowait(message)
+            except queue.Full:
+                logger.warning(
+                    "WebRTC: inbox full (maxsize=%d), dropping %d-byte message from %s",
+                    self._inbox.maxsize,
+                    len(message),
+                    peer.peer_fingerprint[:8],
+                )
+                return
             logger.debug("WebRTC: received %d bytes from %s", len(message), peer.peer_fingerprint[:8])
 
         @channel.on("close")
