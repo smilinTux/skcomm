@@ -544,6 +544,57 @@ class WebRTCTransport(Transport):
             return
 
         try:
+            # Verify CapAuth signature on SDP payloads.
+            # The signaling broker authenticates the WebSocket connection, but
+            # SDP payloads themselves should carry a PGP signature to prevent
+            # MITM attacks at the signaling layer.  When a ``capauth`` wrapper
+            # is present we verify it; when absent we log a warning and proceed
+            # so that unsigned dev/test peers are not silently accepted as
+            # fully authenticated.
+            capauth_wrapper = data.get("capauth")
+            if capauth_wrapper:
+                try:
+                    from ..capauth_validator import CapAuthValidator
+                    validator = CapAuthValidator()
+                    sig = capauth_wrapper.get("signature", "")
+                    signed_payload = capauth_wrapper.get("signed_payload", "")
+                    claimed_fp = capauth_wrapper.get("fingerprint", "")
+                    if not validator.verify_detached(signed_payload, sig, claimed_fp):
+                        logger.warning(
+                            "WebRTC: SDP from %s has INVALID CapAuth signature — "
+                            "dropping to prevent potential MITM",
+                            from_id[:8],
+                        )
+                        return
+                    if claimed_fp.upper() != from_id.upper():
+                        logger.warning(
+                            "WebRTC: SDP CapAuth fingerprint mismatch: "
+                            "claimed=%s, authenticated=%s — dropping",
+                            claimed_fp[:8],
+                            from_id[:8],
+                        )
+                        return
+                except ImportError:
+                    logger.debug(
+                        "WebRTC: CapAuth validator not available — "
+                        "skipping SDP signature verification"
+                    )
+                except Exception as exc:
+                    logger.warning(
+                        "WebRTC: SDP signature verification failed for %s: %s — "
+                        "rejecting signal",
+                        from_id[:8],
+                        exc,
+                    )
+                    return
+            else:
+                logger.warning(
+                    "WebRTC: SDP from %s has no CapAuth signature wrapper — "
+                    "DTLS fingerprint binding is not verified. "
+                    "Peer should send signed SDP for full MITM protection.",
+                    from_id[:8],
+                )
+
             sdp_data = data.get("sdp")
             if sdp_data:
                 sdp_type = sdp_data.get("type")

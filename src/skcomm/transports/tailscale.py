@@ -94,6 +94,7 @@ class TailscaleTransport(Transport):
         self.priority = priority
 
         self._running = False
+        self._lifecycle_lock = threading.Lock()  # guards start/stop state transitions
         self._server_socket: Optional[socket.socket] = None
         self._server_thread: Optional[threading.Thread] = None
         self._inbox: queue.Queue[bytes] = queue.Queue()
@@ -256,41 +257,51 @@ class TailscaleTransport(Transport):
     def start(self) -> bool:
         """Start the TCP listener thread.
 
+        Uses ``_lifecycle_lock`` to prevent a TOCTOU race where two threads
+        could both see ``_running == False`` and start duplicate listeners.
+
         Returns:
             True if started (or already running). False if Tailscale is absent.
         """
-        if self._running:
+        with self._lifecycle_lock:
+            if self._running:
+                return True
+
+            if not self.is_available():
+                logger.debug("Tailscale not available — skipping listener start")
+                return False
+
+            self._running = True
+            self._server_thread = threading.Thread(
+                target=self._listen_loop,
+                name="skcomm-tailscale-listener",
+                daemon=True,
+            )
+            self._server_thread.start()
+            logger.info(
+                "Tailscale listener started on port %d (local IP: %s)",
+                self._listen_port,
+                self._local_ip,
+            )
             return True
 
-        if not self.is_available():
-            logger.debug("Tailscale not available — skipping listener start")
-            return False
-
-        self._running = True
-        self._server_thread = threading.Thread(
-            target=self._listen_loop,
-            name="skcomm-tailscale-listener",
-            daemon=True,
-        )
-        self._server_thread.start()
-        logger.info(
-            "Tailscale listener started on port %d (local IP: %s)",
-            self._listen_port,
-            self._local_ip,
-        )
-        return True
-
     def stop(self) -> None:
-        """Stop the TCP listener and release the server socket."""
-        self._running = False
+        """Stop the TCP listener and release the server socket.
 
-        if self._server_socket:
-            try:
-                self._server_socket.close()
-            except Exception:
-                pass
-            self._server_socket = None
+        Uses ``_lifecycle_lock`` to prevent races with concurrent ``start()``
+        calls and ensure the running flag and socket are updated atomically.
+        """
+        with self._lifecycle_lock:
+            self._running = False
 
+            if self._server_socket:
+                try:
+                    self._server_socket.close()
+                except Exception:
+                    pass
+                self._server_socket = None
+
+        # Join outside the lock to avoid holding it during thread shutdown
         if self._server_thread and self._server_thread.is_alive():
             self._server_thread.join(timeout=3.0)
 

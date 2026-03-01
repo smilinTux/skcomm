@@ -750,6 +750,12 @@ async def get_ice_config():
     turn_secret = os.environ.get("SKCOMM_TURN_SECRET")
     turn_url = os.environ.get("SKCOMM_TURN_URL", "turn:turn.skworld.io:3478")
 
+    if not turn_secret:
+        logger.warning(
+            "SKCOMM_TURN_SECRET not set — TURN relay disabled, "
+            "WebRTC may fail behind NAT"
+        )
+
     if turn_secret:
         ttl = 86400
         timestamp = int(_time.time()) + ttl
