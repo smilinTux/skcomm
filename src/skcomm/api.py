@@ -484,13 +484,17 @@ async def get_conversations():
     """Get a list of active conversations.
 
     Groups messages by thread_id (or sender:recipient pair) and returns
-    conversation metadata. Sourced from the persistent outbox (pending
-    and dead-letter queues), which stores all messages that were queued
-    for delivery.
+    conversation metadata. Sources:
+    1. Persistent outbox (pending + dead-letter queues)
+    2. Syncthing comms outbox/inbox folders (delivered messages)
 
     Returns:
         List of ConversationResponse objects, newest first.
     """
+    import json as _json
+    import os as _os
+
+    # ── Source 1: Persistent outbox (retry queue) ────────────────────
     try:
         outbox = PersistentOutbox()
         all_entries = outbox.list_pending() + outbox.list_dead()
@@ -519,6 +523,57 @@ async def get_conversations():
                 thread["preview"] = env.payload.content[:100]
         except Exception:
             continue
+
+    # ── Source 2: Syncthing comms folders (delivered messages) ────────
+    skcapstone_home = Path(
+        _os.environ.get("SKCAPSTONE_HOME", Path.home() / ".skcapstone")
+    )
+    comms_dirs = [
+        skcapstone_home / "sync" / "comms" / "outbox",
+        skcapstone_home / "sync" / "comms" / "inbox",
+    ]
+    seen_ids: set[str] = set()
+    for comms_dir in comms_dirs:
+        if not comms_dir.is_dir():
+            continue
+        for peer_dir in comms_dir.iterdir():
+            if not peer_dir.is_dir():
+                continue
+            # Skip wildcard broadcast directory (sync traffic, not conversations)
+            if peer_dir.name == "*":
+                continue
+            for msg_file in peer_dir.glob("*.skc.json"):
+                try:
+                    raw = _json.loads(msg_file.read_text())
+                    eid = raw.get("envelope_id", "")
+                    if eid in seen_ids:
+                        continue
+                    seen_ids.add(eid)
+                    sender = raw.get("sender", "unknown")
+                    recipient = raw.get("recipient", "unknown")
+                    payload = raw.get("payload", {})
+                    # Skip ACK messages — they're not conversation content
+                    content_type = payload.get("content_type", "text")
+                    if content_type == "ack":
+                        continue
+                    content = payload.get("content", "")
+                    thread_id = raw.get("metadata", {}).get("thread_id")
+                    key = thread_id or f"{sender}:{recipient}"
+                    thread = threads[key]
+                    thread["participants"].update([sender, recipient])
+                    thread["count"] += 1
+                    ts_str = raw.get("metadata", {}).get("created_at")
+                    ts = None
+                    if ts_str:
+                        try:
+                            ts = datetime.fromisoformat(ts_str)
+                        except (ValueError, TypeError):
+                            pass
+                    if ts and (thread["last_at"] is None or ts > thread["last_at"]):
+                        thread["last_at"] = ts
+                        thread["preview"] = content[:100]
+                except Exception:
+                    continue
 
     _epoch = datetime.fromtimestamp(0, tz=timezone.utc)
     return [
@@ -571,6 +626,9 @@ async def get_conversation(
     Returns:
         ConversationDetailResponse with conversation metadata and messages.
     """
+    import json as _json
+    import os as _os
+
     try:
         outbox = PersistentOutbox()
         all_entries = outbox.list_pending() + outbox.list_dead()
@@ -581,6 +639,7 @@ async def get_conversation(
     # Collect envelopes that belong to this conversation.
     participants: set[str] = set()
     matched: list[tuple[datetime, MessageEnvelopeResponse]] = []
+    seen_ids: set[str] = set()
 
     for entry in all_entries:
         try:
@@ -588,6 +647,7 @@ async def get_conversation(
             key = env.metadata.thread_id or f"{env.sender}:{env.recipient}"
             if key != conversation_id:
                 continue
+            seen_ids.add(env.envelope_id)
             participants.update([env.sender, env.recipient])
             matched.append((
                 env.metadata.created_at,
@@ -609,6 +669,66 @@ async def get_conversation(
             ))
         except Exception:
             continue
+
+    # ── Source 2: Syncthing comms folders ─────────────────────────────
+    skcapstone_home = Path(
+        _os.environ.get("SKCAPSTONE_HOME", Path.home() / ".skcapstone")
+    )
+    comms_dirs = [
+        skcapstone_home / "sync" / "comms" / "outbox",
+        skcapstone_home / "sync" / "comms" / "inbox",
+    ]
+    for comms_dir in comms_dirs:
+        if not comms_dir.is_dir():
+            continue
+        for peer_dir in comms_dir.iterdir():
+            if not peer_dir.is_dir():
+                continue
+            # Skip wildcard broadcast directory
+            if peer_dir.name == "*":
+                continue
+            for msg_file in peer_dir.glob("*.skc.json"):
+                try:
+                    raw = _json.loads(msg_file.read_text())
+                    eid = raw.get("envelope_id", "")
+                    if eid in seen_ids:
+                        continue
+                    sender = raw.get("sender", "unknown")
+                    recipient = raw.get("recipient", "unknown")
+                    thread_id = raw.get("metadata", {}).get("thread_id")
+                    key = thread_id or f"{sender}:{recipient}"
+                    if key != conversation_id:
+                        continue
+                    seen_ids.add(eid)
+                    payload = raw.get("payload", {})
+                    meta = raw.get("metadata", {})
+                    ts = datetime.now(tz=timezone.utc)
+                    if meta.get("created_at"):
+                        try:
+                            ts = datetime.fromisoformat(meta["created_at"])
+                        except (ValueError, TypeError):
+                            pass
+                    participants.update([sender, recipient])
+                    matched.append((
+                        ts,
+                        MessageEnvelopeResponse(
+                            envelope_id=eid,
+                            sender=sender,
+                            recipient=recipient,
+                            content=payload.get("content", ""),
+                            content_type=payload.get("content_type", "text"),
+                            encrypted=payload.get("encrypted", False),
+                            compressed=payload.get("compressed", False),
+                            signature=payload.get("signature"),
+                            thread_id=thread_id,
+                            in_reply_to=meta.get("in_reply_to"),
+                            urgency=meta.get("urgency", "normal"),
+                            created_at=ts,
+                            is_ack=raw.get("is_ack", False),
+                        ),
+                    ))
+                except Exception:
+                    continue
 
     # Sort oldest-first, then apply pagination.
     matched.sort(key=lambda x: x[0])
