@@ -20,6 +20,7 @@ from .models import (
 )
 from .transport import HealthStatus, SendResult, Transport, TransportStatus
 from .crypto import EnvelopeCrypto, KeyStore
+from .signing import EnvelopeSigner, EnvelopeVerifier, SignedEnvelope, VerificationResult
 
 __all__ = [
     "SKComm",
@@ -35,4 +36,8 @@ __all__ = [
     "SendResult",
     "EnvelopeCrypto",
     "KeyStore",
+    "SignedEnvelope",
+    "EnvelopeSigner",
+    "EnvelopeVerifier",
+    "VerificationResult",
 ]
