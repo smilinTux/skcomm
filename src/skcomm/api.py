@@ -1491,6 +1491,36 @@ except Exception as _exc:
 
 
 # ---------------------------------------------------------------------------
+# Household API router (multi-agent roster)
+# ---------------------------------------------------------------------------
+
+try:
+    from .household_router import household_router as _household_router
+
+    app.include_router(_household_router)
+    logger.info("Household API router registered at /api/v1/household")
+except ImportError:
+    logger.debug("Household router not available")
+except Exception as _exc:
+    logger.warning("Failed to register household router: %s", _exc)
+
+
+# ---------------------------------------------------------------------------
+# Souls API router (soul blueprints library + agent profile injection)
+# ---------------------------------------------------------------------------
+
+try:
+    from .souls_router import souls_router as _souls_router
+
+    app.include_router(_souls_router)
+    logger.info("Souls API router registered at /api/v1/souls")
+except ImportError:
+    logger.debug("Souls router not available")
+except Exception as _exc:
+    logger.warning("Failed to register souls router: %s", _exc)
+
+
+# ---------------------------------------------------------------------------
 # PWA static files mount (skprofile-pwa)
 # ---------------------------------------------------------------------------
 
