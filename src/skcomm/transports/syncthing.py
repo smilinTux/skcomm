@@ -438,6 +438,7 @@ def create_transport(
     priority: int = 1,
     comms_root: Optional[str] = None,
     archive: bool = True,
+    identity: Optional[list | str] = None,
     **kwargs,
 ) -> SyncthingTransport:
     """Factory function for the router's transport loader.
@@ -446,9 +447,20 @@ def create_transport(
         priority: Transport priority (lower = higher).
         comms_root: Override comms directory root.
         archive: Whether to archive processed envelopes.
+        identity: Local agent name(s) for outbox scanning. When Syncthing
+                  syncs a single shared folder, messages addressed to the
+                  local agent land in outbox/{name}/. Providing identity
+                  names here lets the transport pick them up.
 
     Returns:
         Configured SyncthingTransport instance.
     """
     root = Path(comms_root).expanduser() if comms_root else None
-    return SyncthingTransport(comms_root=root, priority=priority, archive=archive)
+    transport = SyncthingTransport(comms_root=root, priority=priority, archive=archive)
+
+    if identity:
+        names = [identity] if isinstance(identity, str) else list(identity)
+        for name in names:
+            transport._set_identity(name)
+
+    return transport
