@@ -7,7 +7,7 @@ The postal service model: separate the message from the medium.
 The envelope format never changes. Only the delivery mechanism varies.
 """
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
 from .core import SKComm
 from .models import (
