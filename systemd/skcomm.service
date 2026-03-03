@@ -1,0 +1,19 @@
+[Unit]
+Description=SKComm Transport Daemon (FastAPI :9384)
+Documentation=https://github.com/smilintux-org/skcomm
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h
+Environment=SKCHAT_IDENTITY=capauth:opus@skworld.io
+ExecStart=@@PYTHON3@@ -m uvicorn skcomm.api:app --host 127.0.0.1 --port 9384 --log-level info
+Restart=on-failure
+RestartSec=5s
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=skcomm
+
+[Install]
+WantedBy=default.target
