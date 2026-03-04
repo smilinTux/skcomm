@@ -75,6 +75,10 @@ class DeliveryReport(BaseModel):
         return None
 
 
+class TransportError(Exception):
+    """Raised by a transport on a send failure that warrants retry."""
+
+
 class Transport(ABC):
     """Abstract base class for all SKComm transports.
 

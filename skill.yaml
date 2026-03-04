@@ -1,0 +1,30 @@
+name: skcomm
+version: "0.1.0"
+description: >
+  P2P transport layer for agent messaging. File, Syncthing, Nostr,
+  WebSocket, Tailscale, and WebRTC transports with a unified ABC.
+  Provides the sovereign messaging backbone for all SKWorld agents.
+
+author:
+  name: smilinTux.org
+  email: hello@smilintux.org
+
+tags: [transport, p2p, messaging, webrtc, tailscale, syncthing, nostr]
+category: transport
+
+tools:
+  - name: skcomm_send
+    description: Send a message to a peer via the best available transport
+    entrypoint: skcomm.skill:send_message
+
+  - name: skcomm_receive
+    description: Receive pending messages from all transports
+    entrypoint: skcomm.skill:receive_messages
+
+  - name: skcomm_health
+    description: Check transport health across all available transports
+    entrypoint: skcomm.skill:transport_health
+
+  - name: skcomm_peers
+    description: List known peers and their transport availability
+    entrypoint: skcomm.skill:list_peers

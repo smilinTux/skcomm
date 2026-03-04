@@ -149,8 +149,8 @@ class AckTracker:
 
         try:
             pending = PendingAck.model_validate_json(path.read_text())
-        except Exception:
-            logger.warning("Failed to read pending ACK %s", original_id[:8])
+        except Exception as exc:
+            logger.warning("Failed to read pending ACK %s: %s", original_id[:8], exc)
             return None
 
         pending.status = AckStatus.CONFIRMED
@@ -175,7 +175,8 @@ class AckTracker:
             return None
         try:
             return PendingAck.model_validate_json(path.read_text())
-        except Exception:
+        except Exception as exc:
+            logger.debug("Failed to load ACK entry %s: %s", envelope_id[:8], exc)
             return None
 
     def list_pending(self) -> list[PendingAck]:
@@ -265,8 +266,8 @@ class AckTracker:
         for path in sorted(self._dir.glob(f"*{ACK_SUFFIX}")):
             try:
                 results.append(PendingAck.model_validate_json(path.read_text()))
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warning("Skipping corrupt ACK file %s: %s", path.name, exc)
         return results
 
 

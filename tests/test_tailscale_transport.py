@@ -388,13 +388,13 @@ class TestPeerIpResolution:
 class TestTailscaleStatusLookup:
     """Tests for the tailscale status JSON lookup."""
 
-    def test_hostname_match(self, transport_no_tailscale):
-        """Expected: returns IP when HostName matches recipient."""
+    def test_hostname_exact_match(self, transport_no_tailscale):
+        """Expected: returns IP when HostName exactly matches recipient."""
         t = transport_no_tailscale
         status_json = json.dumps({
             "Peer": {
                 "nodekey:abc": {
-                    "HostName": "lumina-host",
+                    "HostName": "lumina",
                     "DNSName": "lumina.tailnet",
                     "TailscaleIPs": ["100.64.0.50", "fd7a::1"],
                 }
@@ -406,6 +406,44 @@ class TestTailscaleStatusLookup:
         with patch("subprocess.run", return_value=mock_result):
             ip = t._peer_ip_from_tailscale_status("lumina")
         assert ip == "100.64.0.50"
+
+    def test_hostname_substring_no_match(self, transport_no_tailscale):
+        """Expected: 'ops' must NOT match HostName 'devops' — no substring matching."""
+        t = transport_no_tailscale
+        status_json = json.dumps({
+            "Peer": {
+                "nodekey:abc": {
+                    "HostName": "devops",
+                    "DNSName": "devops.tailnet",
+                    "TailscaleIPs": ["100.64.0.77"],
+                }
+            }
+        })
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = status_json
+        with patch("subprocess.run", return_value=mock_result):
+            ip = t._peer_ip_from_tailscale_status("ops")
+        assert ip is None
+
+    def test_dns_label_substring_no_match(self, transport_no_tailscale):
+        """Expected: 'dev' must NOT match DNSName 'devops.tailnet' — first label only."""
+        t = transport_no_tailscale
+        status_json = json.dumps({
+            "Peer": {
+                "nodekey:abc": {
+                    "HostName": "devops-box",
+                    "DNSName": "devops.tailnet",
+                    "TailscaleIPs": ["100.64.0.88"],
+                }
+            }
+        })
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = status_json
+        with patch("subprocess.run", return_value=mock_result):
+            ip = t._peer_ip_from_tailscale_status("dev")
+        assert ip is None
 
     def test_dns_name_match(self, transport_no_tailscale):
         """Expected: returns IP when DNSName matches."""

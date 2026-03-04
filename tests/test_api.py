@@ -228,9 +228,15 @@ class TestInboxEndpoint:
 class TestConversationsEndpoint:
     """Tests for the /api/v1/conversations endpoint."""
 
-    def test_conversations_placeholder(self, client):
-        """Expected: conversations endpoint returns empty list (placeholder)."""
-        response = client.get("/api/v1/conversations")
+    def test_conversations_placeholder(self, client, monkeypatch, tmp_path):
+        """Expected: conversations endpoint returns empty list when no data exists."""
+        monkeypatch.setenv("SKCAPSTONE_HOME", str(tmp_path))
+        with patch("skcomm.api.PersistentOutbox") as mock_outbox, \
+             patch("skcomm.api._get_chat_history") as mock_chat_hist:
+            mock_outbox.return_value.list_pending.return_value = []
+            mock_outbox.return_value.list_dead.return_value = []
+            mock_chat_hist.return_value = None
+            response = client.get("/api/v1/conversations")
         assert response.status_code == 200
         data = response.json()
         assert isinstance(data, list)
@@ -386,13 +392,17 @@ class TestPresenceEndpoint:
 
     def test_presence_update(self, client, mock_skcomm):
         """Expected: presence update returns confirmation."""
-        response = client.post(
-            "/api/v1/presence",
-            json={
-                "status": "online",
-                "message": "Working on tests",
-            },
-        )
+        with patch("skcomm.api.PeerStore") as mock_peer_store, \
+             patch("skcomm.api.HeartbeatPublisher") as mock_hb:
+            mock_peer_store.return_value.list_all.return_value = []
+            mock_hb.return_value.publish.return_value = "/tmp/test.json"
+            response = client.post(
+                "/api/v1/presence",
+                json={
+                    "status": "online",
+                    "message": "Working on tests",
+                },
+            )
 
         assert response.status_code == 200
         data = response.json()
@@ -403,10 +413,14 @@ class TestPresenceEndpoint:
 
     def test_presence_update_without_message(self, client, mock_skcomm):
         """Expected: presence update works without optional message."""
-        response = client.post(
-            "/api/v1/presence",
-            json={"status": "away"},
-        )
+        with patch("skcomm.api.PeerStore") as mock_peer_store, \
+             patch("skcomm.api.HeartbeatPublisher") as mock_hb:
+            mock_peer_store.return_value.list_all.return_value = []
+            mock_hb.return_value.publish.return_value = "/tmp/test.json"
+            response = client.post(
+                "/api/v1/presence",
+                json={"status": "away"},
+            )
 
         assert response.status_code == 200
         data = response.json()

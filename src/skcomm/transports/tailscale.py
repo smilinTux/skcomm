@@ -117,7 +117,8 @@ class TailscaleTransport(Transport):
             config: Dict with optional keys: ``listen_port``, ``auto_detect``,
                 ``priority``. Restart the listener if it was running.
         """
-        was_running = self._running
+        with self._lifecycle_lock:
+            was_running = self._running
         if was_running:
             self.stop()
 
@@ -238,13 +239,16 @@ class TailscaleTransport(Transport):
         with self._peer_ips_lock:
             known_peer_count = len(self._peer_ips)
 
+        with self._lifecycle_lock:
+            is_running = self._running
+
         return HealthStatus(
             transport_name=self.name,
-            status=TransportStatus.AVAILABLE if self._running else TransportStatus.DEGRADED,
+            status=TransportStatus.AVAILABLE if is_running else TransportStatus.DEGRADED,
             details={
                 "local_ip": local_ip,
                 "listen_port": self._listen_port,
-                "listener_running": self._running,
+                "listener_running": is_running,
                 "known_peers": known_peer_count,
                 "inbox_pending": self._inbox.qsize(),
             },
@@ -337,7 +341,8 @@ class TailscaleTransport(Transport):
                 self._listen_port,
                 exc,
             )
-            self._running = False
+            with self._lifecycle_lock:
+                self._running = False
             return
 
         while self._running:

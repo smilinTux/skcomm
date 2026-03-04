@@ -225,8 +225,8 @@ class MessageQueue:
                 meta = QueueMeta.model_validate_json(meta_path.read_text())
                 if meta.is_ready:
                     pending.append(meta)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warning("Skipping corrupt queue meta %s: %s", meta_path.name, exc)
         return pending
 
     def list_all(self) -> list[QueueMeta]:
@@ -239,8 +239,8 @@ class MessageQueue:
         for meta_path in sorted(self._dir.glob(f"*{META_SUFFIX}")):
             try:
                 all_meta.append(QueueMeta.model_validate_json(meta_path.read_text()))
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warning("Skipping corrupt queue meta %s: %s", meta_path.name, exc)
         return all_meta
 
     def update_meta(self, meta: QueueMeta) -> None:
@@ -266,8 +266,8 @@ class MessageQueue:
                     self.dequeue(meta.envelope_id)
                     logger.info("Purged expired envelope %s", meta.envelope_id[:8])
                     removed += 1
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warning("Skipping corrupt queue meta %s: %s", meta_path.name, exc)
         return removed
 
     def drain(self, send_fn) -> tuple[int, int]:

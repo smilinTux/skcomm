@@ -18,7 +18,7 @@ from .models import (
     RoutingConfig,
     RoutingMode,
 )
-from .transport import HealthStatus, SendResult, Transport, TransportStatus
+from .transport import HealthStatus, SendResult, Transport, TransportError, TransportStatus
 from .crypto import EnvelopeCrypto, KeyStore
 from .signing import EnvelopeSigner, EnvelopeVerifier, SignedEnvelope, VerificationResult
 
@@ -31,6 +31,7 @@ __all__ = [
     "RoutingConfig",
     "RoutingMode",
     "Transport",
+    "TransportError",
     "TransportStatus",
     "HealthStatus",
     "SendResult",

@@ -47,7 +47,7 @@ from ..transport import (
 logger = logging.getLogger("skcomm.transports.webrtc")
 
 DEFAULT_SIGNALING_URL = os.environ.get(
-    "SKCOMM_SIGNALING_URL", "ws://localhost:9384/webrtc/ws"
+    "SKCOMM_SIGNALING_URL", "wss://localhost:9384/webrtc/ws"
 )
 CHANNEL_NAME = "skcomm"
 ICE_GATHER_TIMEOUT = 30.0    # seconds to wait for ICE gathering
@@ -114,7 +114,8 @@ class WebRTCTransport(Transport):
 
         Args:
             signaling_url: WebSocket URL of the SKComm signaling broker.
-                Defaults to ``ws://localhost:9384/webrtc/ws``.
+                Defaults to ``wss://localhost:9384/webrtc/ws``.
+                Override with the ``SKCOMM_SIGNALING_URL`` environment variable.
             stun_servers: STUN server URLs (default: Google public STUN).
             turn_server: TURN relay URL (e.g. ``turn:turn.skworld.io:3478``).
             turn_username: Static TURN username (for static credentials).
@@ -230,10 +231,22 @@ class WebRTCTransport(Transport):
 
         with self._peers_lock:
             peer = self._peers.get(recipient)
-            # Snapshot connection state under lock to avoid races
+            # Snapshot connection state under lock to avoid races.
+            # The offer-scheduling decision is also made here: pre-marking
+            # negotiating=True (or inserting the stub) inside the lock ensures
+            # that concurrent send() calls cannot both decide to schedule an
+            # offer for the same recipient, preventing duplicate ICE offers.
             is_connected = peer.connected if peer else False
             channel = peer.channel if peer else None
             is_negotiating = peer.negotiating if peer else False
+            should_offer = not is_connected and not is_negotiating
+            if should_offer:
+                if peer is None:
+                    self._peers[recipient] = PeerConnection(
+                        peer_fingerprint=recipient, pc=None, negotiating=True
+                    )
+                else:
+                    peer.negotiating = True
 
         if is_connected and channel:
             # Happy path: data channel is open
@@ -269,9 +282,14 @@ class WebRTCTransport(Transport):
                     error=str(exc),
                 )
 
-        # No open connection — schedule ICE negotiation, return failure
-        if not peer or not is_negotiating:
-            self._schedule_offer(recipient)
+        # No open connection — schedule ICE negotiation, return failure.
+        # The stub / negotiating=True flag was set inside the lock above, so
+        # only one concurrent send() will ever reach should_offer=True.
+        if should_offer and self._loop and self._running:
+            try:
+                self._run_in_loop(self._initiate_offer(recipient))
+            except RuntimeError:
+                logger.warning("WebRTC: cannot schedule offer — event loop not running")
 
         elapsed = (time.monotonic() - start) * 1000
         return SendResult(
@@ -460,12 +478,12 @@ class WebRTCTransport(Transport):
                 # reconnects, rather than leaving peers stuck in negotiating=True.
                 logger.warning(
                     "WebRTC: signaling disconnected unexpectedly: %s — "
-                    "resetting peer negotiation state",
+                    "resetting peer negotiation state so offers can be retried",
                     exc,
                 )
                 with self._peers_lock:
                     for peer in self._peers.values():
-                        peer.negotiating = True
+                        peer.negotiating = False
             finally:
                 self._signaling_ws = None
                 self._signaling_connected = False
@@ -479,11 +497,19 @@ class WebRTCTransport(Transport):
         msg_type = msg.get("type")
 
         if msg_type == "welcome":
-            # Broker told us which peers are already in the room
+            # Broker told us which peers are already in the room.
+            # Insert the negotiating stub inside the lock so that the
+            # check-and-act is atomic — prevents TOCTOU where two code paths
+            # both see "not in peers" and fire duplicate offers.
             for peer_id in msg.get("peers", []):
+                should_offer = False
                 with self._peers_lock:
-                    already = peer_id in self._peers
-                if not already:
+                    if peer_id not in self._peers:
+                        self._peers[peer_id] = PeerConnection(
+                            peer_fingerprint=peer_id, pc=None, negotiating=True
+                        )
+                        should_offer = True
+                if should_offer:
                     await self._initiate_offer(peer_id)
 
         elif msg_type == "peer_joined":
@@ -933,6 +959,13 @@ class WebRTCTransport(Transport):
                     )
                 )
             else:
+                logger.warning(
+                    "WebRTC: TURN server %s configured but no credentials "
+                    "provided (set turn_secret or turn_username+turn_credential). "
+                    "TURN relay will likely fail authentication and NAT traversal "
+                    "may fall back to STUN-only.",
+                    self._turn_server,
+                )
                 servers.append(RTCIceServer(urls=self._turn_server))
 
         return servers

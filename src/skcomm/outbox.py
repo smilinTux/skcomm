@@ -20,8 +20,9 @@ from __future__ import annotations
 
 import json
 import logging
+import threading
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Optional
 
@@ -244,6 +245,50 @@ class PersistentOutbox:
         """Number of messages in the dead letter queue."""
         return len(list(self._dead.glob("*.json")))
 
+    def start(self, interval: int = 30) -> None:
+        """Start the background retry worker thread.
+
+        The worker calls retry_all() every ``interval`` seconds until
+        stop() is called. The thread is a daemon so it exits with the process.
+
+        Args:
+            interval: Seconds between retry sweeps (default 30).
+        """
+        if getattr(self, "_retry_thread", None) and self._retry_thread.is_alive():
+            return
+        self._stop_event = threading.Event()
+        self._retry_interval = interval
+        self._retry_thread = threading.Thread(
+            target=self._retry_loop, daemon=True, name="skcomm-outbox-retry"
+        )
+        self._retry_thread.start()
+        logger.info("Outbox retry worker started (interval=%ds)", interval)
+
+    def stop(self) -> None:
+        """Stop the background retry worker thread."""
+        stop_event = getattr(self, "_stop_event", None)
+        if stop_event:
+            stop_event.set()
+        thread = getattr(self, "_retry_thread", None)
+        if thread and thread.is_alive():
+            thread.join(timeout=5)
+        logger.info("Outbox retry worker stopped")
+
+    def _retry_loop(self) -> None:
+        """Background thread: sweep pending queue every retry_interval seconds."""
+        while not self._stop_event.is_set():
+            try:
+                results = self.retry_all()
+                if results["retried"] > 0:
+                    logger.info(
+                        "Outbox sweep: retried=%d delivered=%d dead=%d skipped=%d",
+                        results["retried"], results["delivered"],
+                        results["dead_lettered"], results["skipped"],
+                    )
+            except Exception as exc:
+                logger.warning("Outbox retry sweep error: %s", exc)
+            self._stop_event.wait(timeout=self._retry_interval)
+
     def _attempt_delivery(self, entry: OutboxEntry) -> bool:
         """Try to deliver a queued message via the router.
 
@@ -295,7 +340,7 @@ class PersistentOutbox:
         """
         delay = self._base_backoff * (2 ** (attempt - 1))
         delay = min(delay, 3600)
-        return datetime.now(timezone.utc) + __import__("datetime").timedelta(seconds=delay)
+        return datetime.now(timezone.utc) + timedelta(seconds=delay)
 
     def _move_to_dead(self, entry: OutboxEntry, source_path: Path) -> None:
         """Move an entry from pending to dead letter.

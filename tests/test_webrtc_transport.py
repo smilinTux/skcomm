@@ -237,11 +237,13 @@ class TestWebRTCTransportSend:
     def test_send_triggers_ice_when_no_peer(self, running_transport):
         """Expected: send returns failure and schedules ICE negotiation on first send."""
         t = running_transport
-        with patch.object(t, "_schedule_offer") as mock_offer:
+        with patch.object(t, "_run_in_loop") as mock_run:
             result = t.send(make_envelope(), PEER_FP)
         assert result.success is False
         assert "ICE negotiation started" in result.error
-        mock_offer.assert_called_once_with(PEER_FP)
+        mock_run.assert_called_once()
+        assert PEER_FP in t._peers
+        assert t._peers[PEER_FP].negotiating is True
 
     def test_send_does_not_reschedule_when_negotiating(self, running_transport):
         """Expected: _schedule_offer not called again when peer is already negotiating."""
@@ -864,7 +866,8 @@ class TestCreateTransportFactory:
     def test_factory_returns_webrtc_transport(self):
         """Expected: factory returns a WebRTCTransport instance."""
         t = create_transport()
-        assert isinstance(t, WebRTCTransport)
+        # Use type name to avoid false failures after importlib.reload in other tests
+        assert type(t).__name__ == "WebRTCTransport"
 
     def test_factory_default_priority(self):
         """Expected: factory uses priority=1 by default."""

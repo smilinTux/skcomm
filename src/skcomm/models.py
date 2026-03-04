@@ -39,6 +39,7 @@ class MessageType(str, Enum):
     WEBRTC_FILE = "webrtc_file"
     SIGNING_REQUEST = "signing_request"
     SIGNING_RESPONSE = "signing_response"
+    READ_RECEIPT = "read_receipt"
 
 
 class Urgency(str, Enum):
@@ -93,6 +94,16 @@ class MessageMetadata(BaseModel):
     delivered_via: Optional[str] = None
 
 
+# Maps Urgency levels to integer priorities (lower = higher urgency).
+# Used by MessageEnvelope.priority and MessagePriorityQueue in core.py.
+URGENCY_PRIORITY: dict[str, int] = {
+    Urgency.CRITICAL: 0,
+    Urgency.HIGH: 1,
+    Urgency.NORMAL: 2,
+    Urgency.LOW: 3,
+}
+
+
 class MessageEnvelope(BaseModel):
     """The universal SKComm message envelope.
 
@@ -141,7 +152,42 @@ class MessageEnvelope(BaseModel):
         """
         return cls.model_validate_json(data)
 
-    def make_ack(self, sender: str) -> MessageEnvelope:
+    def make_read_receipt(self, sender: str) -> "MessageEnvelope":
+        """Create a READ_RECEIPT envelope to tell the sender this message was read.
+
+        Args:
+            sender: The agent sending the read receipt (the reader's identity).
+
+        Returns:
+            MessageEnvelope: A READ_RECEIPT envelope referencing this message.
+        """
+        import json as _json
+
+        content = _json.dumps(
+            {
+                "message_id": self.envelope_id,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            }
+        )
+        return MessageEnvelope(
+            sender=sender,
+            recipient=self.sender,
+            payload=MessagePayload(
+                content=content,
+                content_type=MessageType.READ_RECEIPT,
+            ),
+            routing=RoutingConfig(
+                mode=RoutingMode.FAILOVER,
+                retry_max=2,
+                ack_requested=False,
+            ),
+            metadata=MessageMetadata(
+                in_reply_to=self.envelope_id,
+                urgency=Urgency.LOW,
+            ),
+        )
+
+    def make_ack(self, sender: str) -> "MessageEnvelope":
         """Create an ACK envelope in response to this message.
 
         Args:
@@ -168,6 +214,14 @@ class MessageEnvelope(BaseModel):
                 urgency=Urgency.LOW,
             ),
         )
+
+    @property
+    def priority(self) -> int:
+        """Numeric priority derived from urgency. Lower = more urgent.
+
+        CRITICAL=0, HIGH=1, NORMAL=2, LOW=3.
+        """
+        return URGENCY_PRIORITY.get(self.metadata.urgency, 2)
 
     @property
     def is_ack(self) -> bool:

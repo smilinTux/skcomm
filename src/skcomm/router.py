@@ -8,7 +8,11 @@ Handles failover, broadcast, and retry logic.
 
 from __future__ import annotations
 
+import base64
+import json
 import logging
+import pathlib
+import threading
 import time
 from collections import OrderedDict
 from typing import Optional
@@ -19,6 +23,7 @@ from .transport import (
     SendResult,
     Transport,
     TransportCategory,
+    TransportError,
     TransportStatus,
 )
 
@@ -30,6 +35,12 @@ COOLDOWN_SECONDS = 60.0     # seconds to skip a transport after repeated failure
 
 # Deduplication cache limit
 SEEN_IDS_MAX = 10_000
+
+# Retry queue
+RETRY_QUEUE_PATH = pathlib.Path.home() / ".skcapstone" / "retry_queue.jsonl"
+RETRY_BASE_DELAY = 1.0   # seconds before first retry (doubles each attempt)
+RETRY_MAX_DELAY = 60.0   # cap on per-attempt wait
+RETRY_MAX_ATTEMPTS = 10  # drop envelope after this many retry attempts
 
 
 class Router:
@@ -65,6 +76,13 @@ class Router:
 
         # Failure tracking: {transport_name: (consecutive_fail_count, last_fail_time)}
         self._transport_failures: dict[str, tuple[int, float]] = {}
+
+        # Retry queue
+        self._queue_lock = threading.Lock()
+        self._retry_thread = threading.Thread(
+            target=self._retry_worker, daemon=True, name="skcomm-retry"
+        )
+        self._retry_thread.start()
 
     @property
     def transports(self) -> list[Transport]:
@@ -143,10 +161,11 @@ class Router:
             )
         else:
             logger.warning(
-                "Failed to deliver %s after %d attempts",
+                "Failed to deliver %s after %d attempts — queuing for retry",
                 envelope.envelope_id[:8],
                 len(report.attempts),
             )
+            self._enqueue_retry(envelope, envelope_bytes)
 
         return report
 
@@ -330,6 +349,19 @@ class Router:
             else:
                 self._record_failure(transport.name)
             return result
+        except TransportError as exc:
+            elapsed = (time.monotonic() - start) * 1000
+            logger.warning(
+                "Transport '%s' TransportError: %s", transport.name, exc
+            )
+            self._record_failure(transport.name)
+            return SendResult(
+                success=False,
+                transport_name=transport.name,
+                envelope_id="",
+                latency_ms=elapsed,
+                error=str(exc),
+            )
         except Exception as exc:
             elapsed = (time.monotonic() - start) * 1000
             logger.warning(
@@ -343,6 +375,143 @@ class Router:
                 latency_ms=elapsed,
                 error=str(exc),
             )
+
+    # ------------------------------------------------------------------
+    # Retry queue
+    # ------------------------------------------------------------------
+
+    def _enqueue_retry(self, envelope: MessageEnvelope, envelope_bytes: bytes) -> None:
+        """Persist a failed envelope to the JSONL retry queue."""
+        entry = {
+            "envelope_id": envelope.envelope_id,
+            "recipient": envelope.recipient,
+            "routing_mode": (envelope.routing.mode or self._default_mode).value,
+            "envelope_b64": base64.b64encode(envelope_bytes).decode(),
+            "attempt": 0,
+            # First retry after RETRY_BASE_DELAY (2^0 = 1s)
+            "next_retry_at": time.time() + RETRY_BASE_DELAY,
+            "queued_at": time.time(),
+        }
+        try:
+            RETRY_QUEUE_PATH.parent.mkdir(parents=True, exist_ok=True)
+            with self._queue_lock:
+                with RETRY_QUEUE_PATH.open("a") as fh:
+                    fh.write(json.dumps(entry) + "\n")
+            logger.info(
+                "Queued envelope %s for retry (max %d attempts)",
+                envelope.envelope_id[:8],
+                RETRY_MAX_ATTEMPTS,
+            )
+        except OSError as exc:
+            logger.error("Failed to write retry queue: %s", exc)
+
+    def _retry_worker(self) -> None:
+        """Daemon thread: process the retry queue every second."""
+        while True:
+            try:
+                self._process_retry_queue()
+            except Exception:
+                logger.exception("Retry worker error")
+            time.sleep(1.0)
+
+    def _process_retry_queue(self) -> None:
+        """One sweep: attempt ready entries, rewrite queue with survivors."""
+        if not RETRY_QUEUE_PATH.exists():
+            return
+
+        with self._queue_lock:
+            try:
+                raw = RETRY_QUEUE_PATH.read_text()
+            except OSError:
+                return
+
+            entries: list[dict] = []
+            for line in raw.splitlines():
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    entries.append(json.loads(line))
+                except json.JSONDecodeError:
+                    logger.warning("Corrupt retry queue entry — dropping")
+
+            now = time.time()
+            surviving: list[dict] = []
+
+            for entry in entries:
+                if entry.get("next_retry_at", 0) > now:
+                    surviving.append(entry)
+                    continue
+
+                attempt = entry.get("attempt", 0)
+                if attempt >= RETRY_MAX_ATTEMPTS:
+                    logger.warning(
+                        "Dropping envelope %s after %d retry attempts",
+                        entry.get("envelope_id", "?")[:8],
+                        RETRY_MAX_ATTEMPTS,
+                    )
+                    continue
+
+                try:
+                    envelope_bytes = base64.b64decode(entry["envelope_b64"])
+                except Exception:
+                    logger.warning("Retry queue entry has invalid envelope_b64 — dropping")
+                    continue
+
+                recipient = entry.get("recipient", "")
+                try:
+                    mode = RoutingMode(entry.get("routing_mode", RoutingMode.FAILOVER.value))
+                except ValueError:
+                    mode = RoutingMode.FAILOVER
+
+                if self._retry_send(envelope_bytes, recipient, mode):
+                    logger.info(
+                        "Retry delivered envelope %s (attempt %d)",
+                        entry.get("envelope_id", "?")[:8],
+                        attempt + 1,
+                    )
+                    # Delivered — don't re-add to survivors
+                else:
+                    next_attempt = attempt + 1
+                    delay = min(RETRY_BASE_DELAY * (2 ** next_attempt), RETRY_MAX_DELAY)
+                    entry["attempt"] = next_attempt
+                    entry["next_retry_at"] = time.time() + delay
+                    surviving.append(entry)
+                    logger.debug(
+                        "Retry failed for %s — next in %.0fs (attempt %d/%d)",
+                        entry.get("envelope_id", "?")[:8],
+                        delay,
+                        next_attempt,
+                        RETRY_MAX_ATTEMPTS,
+                    )
+
+            try:
+                if surviving:
+                    RETRY_QUEUE_PATH.write_text(
+                        "\n".join(json.dumps(e) for e in surviving) + "\n"
+                    )
+                else:
+                    RETRY_QUEUE_PATH.write_text("")
+            except OSError as exc:
+                logger.error("Failed to rewrite retry queue: %s", exc)
+
+    def _retry_send(self, envelope_bytes: bytes, recipient: str, mode: RoutingMode) -> bool:
+        """Try to deliver envelope bytes via available transports (failover order)."""
+        available = [
+            t for t in self._transports
+            if t.is_available() and not self._is_in_cooldown(t.name)
+        ]
+        if mode == RoutingMode.STEALTH:
+            available = [t for t in available if t.category in self.STEALTH_CATEGORIES]
+        elif mode == RoutingMode.SPEED:
+            available = [t for t in available if t.category in self.SPEED_CATEGORIES]
+        available = sorted(available, key=lambda t: t.priority)
+
+        for transport in available:
+            result = self._try_send(transport, envelope_bytes, recipient)
+            if result.success:
+                return True
+        return False
 
     def _extract_envelope_id(self, data: bytes) -> Optional[str]:
         """Best-effort extraction of envelope_id from raw bytes for dedup."""

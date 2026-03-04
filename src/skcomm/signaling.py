@@ -14,6 +14,7 @@ Signal wire protocol (relay only — no media ever passes through):
     Server → Client:  {"type": "signal",     "from": "<fp>", "data": {...}}
     Server → Client:  {"type": "peer_joined","peer": "<fp>"}
     Server → Client:  {"type": "peer_left",  "peer": "<fp>"}
+    Server → Client:  {"type": "cancel_ice", "peer": "<fp>"}  -- ICE cancelled (peer disconnected mid-negotiation)
 
 Security:
     The broker validates that the authenticated fingerprint (from the
@@ -59,6 +60,9 @@ class WebRTCRoom:
         self._peers: dict[str, "WebSocket"] = {}
         # Per-peer rate limiting: fingerprint -> list of message timestamps
         self._message_timestamps: dict[str, list[float]] = defaultdict(list)
+        # Active ICE negotiations: fingerprint -> set of partner fingerprints
+        # Used to send cancel_ice when a peer disconnects mid-negotiation.
+        self._ice_sessions: dict[str, set[str]] = defaultdict(set)
 
     @property
     def peer_ids(self) -> list[str]:
@@ -140,9 +144,14 @@ class WebRTCRoom:
     async def remove_peer(self, fingerprint: str) -> None:
         """Deregister a peer and notify remaining peers.
 
+        Sends ``cancel_ice`` to any peers that were mid-negotiation with
+        this peer, then removes the peer and broadcasts ``peer_left``.
+
         Args:
             fingerprint: PGP fingerprint of the leaving peer.
         """
+        # Cancel active ICE sessions before removing (partners still in _peers)
+        await self._cancel_ice_sessions(fingerprint)
         self._peers.pop(fingerprint, None)
         self._message_timestamps.pop(fingerprint, None)
         await self._notify_others(
@@ -155,6 +164,36 @@ class WebRTCRoom:
             self.room_id,
             len(self._peers),
         )
+
+    async def _cancel_ice_sessions(self, fingerprint: str) -> None:
+        """Send ``cancel_ice`` to all peers that were in an active ICE
+        negotiation with ``fingerprint`` and clean up session state.
+
+        Called during peer removal so that partners can abort their
+        RTCPeerConnection before receiving the generic ``peer_left``.
+
+        Args:
+            fingerprint: PGP fingerprint of the departing peer.
+        """
+        partners = self._ice_sessions.pop(fingerprint, set())
+        for partner_fp in partners:
+            # Remove the reverse reference to avoid stale state
+            self._ice_sessions.get(partner_fp, set()).discard(fingerprint)
+            partner_ws = self._peers.get(partner_fp)
+            if partner_ws is None:
+                continue
+            try:
+                await self._send(partner_ws, {"type": "cancel_ice", "peer": fingerprint})
+            except Exception as exc:
+                logger.debug(
+                    "Failed to send cancel_ice to %s: %s", partner_fp[:8], exc
+                )
+        if partners:
+            logger.info(
+                "Cancelled %d ICE session(s) for departing peer %s",
+                len(partners),
+                fingerprint[:8],
+            )
 
     async def relay(self, sender: str, to: str, data: dict) -> bool:
         """Relay a signal message from one peer to another.
@@ -180,6 +219,12 @@ class WebRTCRoom:
                 sender[:8],
             )
             return False
+
+        # Track ICE negotiation sessions so we can send cancel_ice on disconnect.
+        # ICE candidate messages contain a "candidate" key in the data dict.
+        if isinstance(data, dict) and "candidate" in data:
+            self._ice_sessions[sender].add(to)
+            self._ice_sessions[to].add(sender)
 
         message = {"type": "signal", "from": sender, "data": data}
         try:

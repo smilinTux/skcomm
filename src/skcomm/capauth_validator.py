@@ -295,6 +295,82 @@ class CapAuthValidator:
 
         return None
 
+    def verify_detached(
+        self,
+        signed_payload: str,
+        sig: str,
+        claimed_fp: str,
+    ) -> bool:
+        """Verify a detached PGP signature over an arbitrary payload.
+
+        Used by the WebRTC transport to authenticate SDP payloads inside the
+        ``capauth`` wrapper. The signature may be ASCII-armored PGP or
+        base64url-encoded raw DER bytes.
+
+        Args:
+            signed_payload: The UTF-8 text that was signed.
+            sig: The detached PGP signature, either as ASCII armor
+                (``-----BEGIN PGP SIGNATURE-----``) or as a base64url-encoded
+                raw signature blob.
+            claimed_fp: 40-hex fingerprint of the expected signer.
+
+        Returns:
+            True if the signature is valid and the signer matches
+            ``claimed_fp``.  False on any failure (bad sig, unknown key,
+            missing deps, etc.).
+        """
+        fingerprint = claimed_fp.upper().strip()
+        if not _FINGERPRINT_RE.match(fingerprint):
+            logger.warning(
+                "verify_detached: claimed fingerprint is not valid 40-hex: %s",
+                fingerprint,
+            )
+            return False
+
+        try:
+            import base64
+
+            import pgpy  # type: ignore[import]
+
+            # Accept either ASCII-armored PGP signature or base64url bytes.
+            if sig.strip().startswith("-----BEGIN PGP SIGNATURE-----"):
+                pgp_sig = pgpy.PGPSignature.from_blob(sig)
+            else:
+                # Pad to a multiple of 4 before decoding
+                sig_bytes = base64.urlsafe_b64decode(sig + "==")
+                pgp_sig = pgpy.PGPSignature.from_blob(sig_bytes)
+
+            pub_key = self._load_public_key(fingerprint)
+            if pub_key is None:
+                logger.warning(
+                    "verify_detached: public key not found for %s", fingerprint
+                )
+                return False
+
+            result = pub_key.verify(signed_payload, pgp_sig)
+            if not bool(result):
+                logger.warning(
+                    "verify_detached: PGP signature INVALID for %s", fingerprint
+                )
+                return False
+
+            logger.debug("verify_detached: PGP sig valid for %s", fingerprint)
+            return True
+
+        except ImportError:
+            logger.warning(
+                "pgpy not installed — cannot verify SDP signature. "
+                "Install skcomm[crypto] for full CapAuth PGP verification."
+            )
+            return False
+        except Exception as exc:
+            logger.warning(
+                "verify_detached: signature verification error for %s: %s",
+                fingerprint,
+                exc,
+            )
+            return False
+
     def _validate_remote(self, token: str) -> Optional[str]:
         """Remote validation via CapAuth API.
 

@@ -14,6 +14,7 @@ Design:
 
 from __future__ import annotations
 
+import contextlib
 import logging
 from pathlib import Path
 from typing import Optional
@@ -167,7 +168,8 @@ class EnvelopeCrypto:
             private_key, _ = pgpy.PGPKey.from_blob(self._private_armor)
             pgp_message = pgpy.PGPMessage.from_blob(envelope.payload.content)
 
-            with private_key.unlock(self._passphrase):
+            _ctx = private_key.unlock(self._passphrase) if private_key.is_protected else contextlib.nullcontext()
+            with _ctx:
                 decrypted = private_key.decrypt(pgp_message)
 
             plaintext = decrypted.message
@@ -214,7 +216,8 @@ class EnvelopeCrypto:
                 cleartext=False,
             )
 
-            with private_key.unlock(self._passphrase):
+            _ctx = private_key.unlock(self._passphrase) if private_key.is_protected else contextlib.nullcontext()
+            with _ctx:
                 sig = private_key.sign(pgp_message)
 
             new_payload = envelope.payload.model_copy(

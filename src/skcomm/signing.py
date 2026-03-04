@@ -18,6 +18,7 @@ Usage:
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
 import logging
@@ -136,7 +137,8 @@ class EnvelopeSigner:
 
         pgp_message = pgpy.PGPMessage.new(canonical.encode("utf-8"), cleartext=False)
 
-        with self._key.unlock(self._passphrase):
+        _ctx = self._key.unlock(self._passphrase) if self._key.is_protected else contextlib.nullcontext()
+        with _ctx:
             sig = self._key.sign(pgp_message)
 
         return SignedEnvelope(

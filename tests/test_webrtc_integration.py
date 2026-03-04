@@ -305,15 +305,17 @@ class TestSendWithNoPeers:
         assert result.transport_name == "webrtc"
 
     def test_send_no_peer_triggers_ice_negotiation(self, running_transport):
-        """Expected: send to unknown peer triggers _schedule_offer and returns failure."""
+        """Expected: send to unknown peer triggers ICE negotiation and returns failure."""
         t = running_transport
 
-        with patch.object(t, "_schedule_offer") as mock_offer:
+        with patch.object(t, "_run_in_loop") as mock_run:
             result = t.send(_make_envelope_bytes(), PEER_FP)
 
         assert result.success is False
         assert "ICE negotiation started" in result.error
-        mock_offer.assert_called_once_with(PEER_FP)
+        mock_run.assert_called_once()
+        assert PEER_FP in t._peers
+        assert t._peers[PEER_FP].negotiating is True
 
     def test_send_no_peer_includes_envelope_id(self, running_transport):
         """Expected: failed send result still carries the envelope ID."""
@@ -367,31 +369,32 @@ class TestSignalingUrlEnvVar:
 
     def test_signaling_url_from_env_var(self):
         """Expected: SKCOMM_SIGNALING_URL env var overrides the default."""
+        import importlib
+        import skcomm.transports.webrtc as webrtc_mod
         custom_url = "wss://signal.custom.example.com/ws"
-        with patch.dict(os.environ, {"SKCOMM_SIGNALING_URL": custom_url}):
-            # Reload the module-level default to pick up env change
-            import importlib
-            import skcomm.transports.webrtc as webrtc_mod
-            importlib.reload(webrtc_mod)
-            try:
+        try:
+            with patch.dict(os.environ, {"SKCOMM_SIGNALING_URL": custom_url}):
+                # Reload the module-level default to pick up env change
+                importlib.reload(webrtc_mod)
                 t = webrtc_mod.WebRTCTransport()
                 assert t._signaling_url == custom_url
-            finally:
-                # Restore the module to avoid polluting other tests
-                importlib.reload(webrtc_mod)
+        finally:
+            # Restore the module AFTER patch.dict exits so env is clean
+            importlib.reload(webrtc_mod)
 
     def test_constructor_url_overrides_env(self):
         """Expected: explicit signaling_url parameter overrides env var."""
+        import importlib
+        import skcomm.transports.webrtc as webrtc_mod
         explicit_url = "ws://explicit:1234/ws"
-        with patch.dict(os.environ, {"SKCOMM_SIGNALING_URL": "ws://from-env:9999/ws"}):
-            import importlib
-            import skcomm.transports.webrtc as webrtc_mod
-            importlib.reload(webrtc_mod)
-            try:
+        try:
+            with patch.dict(os.environ, {"SKCOMM_SIGNALING_URL": "ws://from-env:9999/ws"}):
+                importlib.reload(webrtc_mod)
                 t = webrtc_mod.WebRTCTransport(signaling_url=explicit_url)
                 assert t._signaling_url == explicit_url
-            finally:
-                importlib.reload(webrtc_mod)
+        finally:
+            # Restore the module AFTER patch.dict exits so env is clean
+            importlib.reload(webrtc_mod)
 
     def test_configure_overrides_signaling_url(self, transport):
         """Expected: configure() can update signaling URL after construction."""
