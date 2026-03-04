@@ -3,8 +3,14 @@ Syncthing transport — file-based P2P messaging over the Syncthing mesh.
 
 Uses the existing Syncthing sync folder (same one used for vault sync)
 as a message transport. Envelopes are written as JSON files to per-peer
-outbox directories. Syncthing propagates them. The receiver picks up
-from their inbox directory.
+outbox directories. Syncthing propagates them bidirectionally.
+
+When Syncthing syncs a single shared folder between machines, a message
+sent from Machine A to "Lumina" lands in ``outbox/Lumina/`` on *both*
+machines.  The receiver picks up from ``inbox/`` directories **and** from
+any ``outbox/`` subdirectory whose name matches its own identity (case-
+insensitive).  This handles the common single-shared-folder topology
+without requiring separate send/receive Syncthing folders.
 
 This is the DEFAULT, always-on transport because Syncthing is already
 running for vault sync. No additional infrastructure needed.
@@ -79,6 +85,7 @@ class SyncthingTransport(Transport):
         """
         self.priority = priority
         self._archive = archive
+        self._local_names: list[str] = []
 
         if comms_root is None:
             self._root = Path("~/.skcapstone/comms").expanduser()
@@ -93,7 +100,10 @@ class SyncthingTransport(Transport):
         """Load transport-specific configuration.
 
         Args:
-            config: Dict with optional keys: comms_root, archive.
+            config: Dict with optional keys: comms_root, archive, identity.
+                    identity (str or list[str]): local agent names so the
+                    transport can pick up messages from outbox/{name}/ dirs
+                    that arrive via bidirectional Syncthing sync.
         """
         if "comms_root" in config:
             self._root = Path(config["comms_root"]).expanduser()
@@ -102,6 +112,25 @@ class SyncthingTransport(Transport):
             self._archive_dir = self._root / "archive"
 
         self._archive = config.get("archive", self._archive)
+
+        identity = config.get("identity")
+        if identity:
+            if isinstance(identity, str):
+                self._local_names = [identity]
+            elif isinstance(identity, list):
+                self._local_names = list(identity)
+
+    def _set_identity(self, name: str) -> None:
+        """Set the local identity name for outbox scanning.
+
+        Called by the core SKComm engine so the transport knows which
+        outbox/{name}/ subdirectories contain messages for this agent.
+
+        Args:
+            name: The local agent's display name.
+        """
+        if name and name not in self._local_names:
+            self._local_names.append(name)
 
     def is_available(self) -> bool:
         """Check if the comms directories are accessible.
@@ -170,9 +199,15 @@ class SyncthingTransport(Transport):
             )
 
     def receive(self) -> list[bytes]:
-        """Poll all inbox peer directories for new envelopes.
+        """Poll inbox and outbox directories for inbound envelopes.
 
-        Reads and removes envelope files from inbox/{peer}/ directories.
+        Scans ``inbox/{peer}/`` (traditional layout) **and** any
+        ``outbox/{name}/`` subdirectory whose name matches the local
+        identity.  The outbox scan handles the common case where
+        Syncthing bidirectionally syncs a single shared comms folder:
+        messages sent *to* this agent land in ``outbox/{my_name}/``
+        on the local machine.
+
         Optionally archives processed files.
 
         Returns:
@@ -181,13 +216,23 @@ class SyncthingTransport(Transport):
         self._ensure_dirs()
         received: list[bytes] = []
 
-        if not self._inbox.exists():
-            return received
+        # Collect directories to scan: all inbox peer dirs + matching outbox dirs
+        scan_dirs: list[Path] = []
 
-        for peer_dir in self._inbox.iterdir():
-            if not peer_dir.is_dir():
-                continue
+        if self._inbox.exists():
+            scan_dirs.extend(
+                d for d in self._inbox.iterdir() if d.is_dir()
+            )
 
+        # Also scan outbox/{local_name}/ for messages arriving via
+        # bidirectional Syncthing sync.
+        if self._local_names and self._outbox.exists():
+            lower_names = {n.lower() for n in self._local_names}
+            for outbox_dir in self._outbox.iterdir():
+                if outbox_dir.is_dir() and outbox_dir.name.lower() in lower_names:
+                    scan_dirs.append(outbox_dir)
+
+        for peer_dir in scan_dirs:
             for env_file in sorted(peer_dir.glob(f"*{ENVELOPE_SUFFIX}")):
                 if env_file.name.startswith("."):
                     continue
@@ -297,13 +342,12 @@ class SyncthingTransport(Transport):
             free_pct = (usage.free / usage.total) * 100
             free_gb = usage.free / (1024 ** 3)
 
-            if free_pct < 1.5:
+            if free_gb < 1.0:
                 return (
                     f"Only {free_gb:.1f}GB free ({free_pct:.1f}%). "
-                    f"Syncthing default minDiskFree is 1% "
-                    f"({usage.total / (1024**3) * 0.01:.0f}GB on this volume). "
-                    f"Sync may be blocked. Lower minDiskFree to 100MB via "
-                    f"Syncthing API or free disk space."
+                    f"Sync may be blocked if Syncthing minDiskFree exceeds "
+                    f"available space. Free disk space or lower minDiskFree "
+                    f"via Syncthing API."
                 )
         except OSError:
             pass
@@ -394,6 +438,7 @@ def create_transport(
     priority: int = 1,
     comms_root: Optional[str] = None,
     archive: bool = True,
+    identity: Optional[list | str] = None,
     **kwargs,
 ) -> SyncthingTransport:
     """Factory function for the router's transport loader.
@@ -402,9 +447,20 @@ def create_transport(
         priority: Transport priority (lower = higher).
         comms_root: Override comms directory root.
         archive: Whether to archive processed envelopes.
+        identity: Local agent name(s) for outbox scanning. When Syncthing
+                  syncs a single shared folder, messages addressed to the
+                  local agent land in outbox/{name}/. Providing identity
+                  names here lets the transport pick them up.
 
     Returns:
         Configured SyncthingTransport instance.
     """
     root = Path(comms_root).expanduser() if comms_root else None
-    return SyncthingTransport(comms_root=root, priority=priority, archive=archive)
+    transport = SyncthingTransport(comms_root=root, priority=priority, archive=archive)
+
+    if identity:
+        names = [identity] if isinstance(identity, str) else list(identity)
+        for name in names:
+            transport._set_identity(name)
+
+    return transport

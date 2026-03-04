@@ -97,6 +97,11 @@ class SKComm:
                 continue
             transport = _load_transport(name, tconf.priority, tconf.settings)
             if transport:
+                # Tell transports the local identity so they can pick up
+                # messages addressed to us (e.g. outbox/{my_name}/ dirs
+                # arriving via bidirectional Syncthing sync).
+                if hasattr(transport, "_set_identity"):
+                    transport._set_identity(config.identity.name)
                 router.register_transport(transport)
 
         crypto = None
