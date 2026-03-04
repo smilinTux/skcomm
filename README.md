@@ -87,21 +87,38 @@ Each transport is a self-contained module with a standard interface: `send(envel
 
 ## Install
 
+### Recommended: venv install (all SK* packages)
+
 ```bash
-pip install skcomm
+# Quick install (creates ~/.skenv virtualenv)
+bash scripts/install.sh
 
-# With WebRTC + Tailscale P2P transport (aiortc)
-pip install "skcomm[webrtc]"
-
-# All extras
-pip install "skcomm[all]"
+# Or manual venv:
+python3 -m venv ~/.skenv
+~/.skenv/bin/pip install -e ".[cli,crypto,discovery,api]"
+export PATH="$HOME/.skenv/bin:$PATH"
 ```
 
-Or from source:
+Add the `PATH` export to your shell profile (`~/.bashrc` or `~/.zshrc`) to make it permanent.
+
+### From source (development)
+
 ```bash
 git clone https://github.com/smilinTux/skcomm.git
 cd skcomm
-pip install -e ".[dev]"
+python3 -m venv ~/.skenv
+~/.skenv/bin/pip install -e ".[cli,crypto,discovery,api]"
+export PATH="$HOME/.skenv/bin:$PATH"
+```
+
+### Optional extras
+
+```bash
+# WebRTC P2P transport (aiortc)
+~/.skenv/bin/pip install -e ".[webrtc]"
+
+# All extras
+~/.skenv/bin/pip install -e ".[all]"
 ```
 
 ---
@@ -115,6 +132,31 @@ skcomm init --name "Opus" --email "opus@smilintux.org"
 ```
 
 ### Add a peer
+
+**Public exchange via DID registry** (peer must have published their DID):
+```bash
+skcomm peer fetch lumina
+# Fetches peer identity from https://ws.weblink.skworld.io/agents/lumina/.well-known/did.json
+# Saves PeerInfo + public key to ~/.skcomm/peers/
+
+# Custom DID URL
+skcomm peer fetch opus --url https://example.com/.well-known/did.json
+```
+
+**Private exchange via peer bundle** (direct file/USB/Signal transfer):
+```bash
+# Export your own identity bundle
+skcomm peer export
+skcomm peer export --file my-identity.json
+skcomm peer export --no-transports   # identity only
+
+# Import a peer's bundle
+skcomm peer import peer-bundle.json
+skcomm peer import https://example.com/peer-bundle.json
+cat bundle.json | skcomm peer import -
+```
+
+**Legacy manual add:**
 ```bash
 skcomm peer add --name "Lumina" --pubkey lumina.pub.asc
 # Or discover via Tailscale/Netbird mesh
@@ -328,6 +370,44 @@ skcomm send --to lumina --mode broadcast "URGENT: System alert"
 
 ---
 
+## Key Exchange
+
+SKComm supports two methods for exchanging keys with new peers. See
+[docs/SOP-KEY-EXCHANGE.md](docs/SOP-KEY-EXCHANGE.md) for full procedures.
+
+### Method 1: Public (DID-based)
+
+Peers publish their identity to the skworld.io DID registry. Anyone can discover
+and fetch the peer's public key without prior coordination.
+
+```bash
+# Fetch a peer by their agent slug
+skcomm peer fetch lumina
+
+# Verify the fingerprint out-of-band, then send a test message
+skcomm peers
+skcomm send lumina "Key exchange complete — can you read this?"
+```
+
+### Method 2: Private (Bundle Exchange)
+
+Exchange identity bundles directly via file transfer, USB, Signal, or any trusted
+out-of-band channel. Suitable for closed networks.
+
+```bash
+# Export your identity
+skcomm peer export --file my-identity.json
+
+# Recipient imports it
+skcomm peer import my-identity.json
+```
+
+The bundle format includes your public PGP key, DID key, fingerprint, name,
+email, and transport configuration. Always verify fingerprints through a trusted
+out-of-band channel before considering a key exchange complete.
+
+---
+
 ## Security Model (Powered by CapAuth)
 
 SKComm uses **CapAuth** for all identity, authentication, and trust management.
@@ -453,9 +533,11 @@ That text file was the first SKComm transport. This project is the system that g
 
 | Document | Description |
 |----------|-------------|
-| [Developer Quickstart](../docs/QUICKSTART.md) | Install + first sovereign agent in 5 minutes |
-| [API Reference](../docs/API.md) | Full API docs for SKComm and all core packages |
-| [PMA Integration](../docs/PMA_INTEGRATION.md) | Legal sovereignty layer (Fiducia Communitatis) |
+| [Developer Quickstart](QUICKSTART.md) | Install + first sovereign agent in 5 minutes |
+| [API Reference](API.md) | Full API docs for SKComm and all core packages |
+| [Architecture](ARCHITECTURE.md) | System design, mermaid diagrams, transport/DID architecture |
+| [Key Exchange SOP](docs/SOP-KEY-EXCHANGE.md) | Peer onboarding: DID fetch, bundle export/import, key rotation |
+| [Security](SECURITY.md) | Security model, threat model, responsible disclosure |
 
 ## License
 

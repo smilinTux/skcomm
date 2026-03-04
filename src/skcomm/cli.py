@@ -596,6 +596,154 @@ def peer_list(json_out: bool):
     _print("")
 
 
+@peer_group.command("fetch")
+@click.argument("name")
+@click.option("--url", default=None, help="Custom DID document URL (default: skworld.io registry).")
+@click.option("--no-save", is_flag=True, help="Display only, don't save to peer store.")
+def peer_fetch(name: str, url: Optional[str], no_save: bool):
+    """Fetch a peer's identity from their published DID.
+
+    Resolves the peer's DID document from the skworld.io registry
+    (or a custom URL), extracts their identity info, and adds them
+    to the local peer store.
+
+    Examples:
+
+        skcomm peer fetch lumina
+
+        skcomm peer fetch opus --url https://custom.example/did.json
+
+        skcomm peer fetch jarvis --url file:///path/to/did.json
+    """
+    from .key_exchange import KeyExchangeError, fetch_peer_from_did
+
+    source = url or name
+    try:
+        peer = fetch_peer_from_did(source, save=not no_save)
+    except KeyExchangeError as exc:
+        _print(f"\n  [red]Error:[/] {exc}\n")
+        raise SystemExit(1)
+
+    _print(f"\n  [green]Peer fetched from DID:[/]")
+    _print(f"    Name:        [bold]{peer.name}[/]")
+    if peer.fingerprint:
+        _print(f"    Fingerprint: [dim]{peer.fingerprint}[/]")
+    _print(f"    Via:         [dim]{peer.discovered_via}[/]")
+    if not no_save:
+        _print(f"    [green]Saved to peer store[/]")
+    _print("")
+
+
+@peer_group.command("export")
+@click.option("--file", "-f", "file_path", default=None, help="Write bundle to file instead of stdout.")
+@click.option("--no-transports", is_flag=True, help="Exclude transport config from bundle.")
+def peer_export(file_path: Optional[str], no_transports: bool):
+    """Export your identity as a peer bundle for sharing.
+
+    Generates a JSON bundle containing your name, PGP fingerprint,
+    public key, and transport config. Share this file with peers
+    who want to add you to their network.
+
+    Examples:
+
+        skcomm peer export
+
+        skcomm peer export --file my-identity.json
+
+        skcomm peer export | scp - user@host:~/peer-bundle.json
+    """
+    from .key_exchange import KeyExchangeError, export_peer_bundle
+
+    try:
+        bundle = export_peer_bundle(include_transports=not no_transports)
+    except KeyExchangeError as exc:
+        _print(f"\n  [red]Error:[/] {exc}\n")
+        raise SystemExit(1)
+
+    bundle_json = json.dumps(bundle, indent=2)
+
+    if file_path:
+        Path(file_path).write_text(bundle_json, encoding="utf-8")
+        _print(f"\n  [green]Bundle written to:[/] {file_path}")
+        _print(f"    Name:        [bold]{bundle['name']}[/]")
+        _print(f"    Fingerprint: [dim]{bundle.get('fingerprint', 'N/A')}[/]")
+        _print("")
+    else:
+        click.echo(bundle_json)
+
+
+@peer_group.command("import")
+@click.argument("source")
+@click.option("--no-gpg", is_flag=True, help="Don't import public key to GPG keyring.")
+@click.option("--yes", "-y", is_flag=True, help="Skip confirmation prompt.")
+def peer_import(source: str, no_gpg: bool, yes: bool):
+    """Import a peer from a bundle file.
+
+    Reads a JSON peer bundle (from `skcomm peer export`) and adds
+    the peer to the local store. Also imports their public key to
+    the GPG keyring for encrypted messaging.
+
+    SOURCE can be a file path, URL, or '-' for stdin.
+
+    Examples:
+
+        skcomm peer import peer-bundle.json
+
+        skcomm peer import https://example.com/bundle.json
+
+        cat bundle.json | skcomm peer import -
+    """
+    import urllib.request
+
+    from .key_exchange import KeyExchangeError, import_peer_bundle
+
+    # Load bundle from source
+    try:
+        if source == "-":
+            raw = sys.stdin.read()
+        elif source.startswith("http://") or source.startswith("https://"):
+            with urllib.request.urlopen(source, timeout=15) as resp:
+                raw = resp.read().decode("utf-8")
+        else:
+            raw = Path(source).read_text(encoding="utf-8")
+
+        bundle = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        _print(f"\n  [red]Error:[/] Invalid JSON: {exc}\n")
+        raise SystemExit(1)
+    except Exception as exc:
+        _print(f"\n  [red]Error:[/] Could not read source: {exc}\n")
+        raise SystemExit(1)
+
+    # Show peer info and confirm
+    _print(f"\n  [bold]Peer Bundle:[/]")
+    _print(f"    Name:        [bold]{bundle.get('name', 'N/A')}[/]")
+    _print(f"    Fingerprint: [dim]{bundle.get('fingerprint', 'N/A')}[/]")
+    _print(f"    Email:       [dim]{bundle.get('email', 'N/A')}[/]")
+    _print(f"    DID Key:     [dim]{bundle.get('did_key', 'N/A')}[/]")
+    has_key = "Yes" if bundle.get("public_key") else "No"
+    _print(f"    Public Key:  [dim]{has_key}[/]")
+    _print("")
+
+    if not yes:
+        if not click.confirm("  Import this peer?", default=True):
+            _print("  [dim]Cancelled.[/]\n")
+            return
+
+    try:
+        peer = import_peer_bundle(bundle, gpg_import=not no_gpg)
+    except KeyExchangeError as exc:
+        _print(f"\n  [red]Error:[/] {exc}\n")
+        raise SystemExit(1)
+
+    _print(f"  [green]Imported:[/] [bold]{peer.name}[/]")
+    if peer.fingerprint:
+        _print(f"  Fingerprint: [dim]{peer.fingerprint}[/]")
+    if not no_gpg:
+        _print(f"  [dim]Public key imported to GPG keyring[/]")
+    _print("")
+
+
 @main.command("peers")
 @click.option("--config", "-c", default=None, help="Config file path.")
 @click.option("--json-out", is_flag=True, help="Output as JSON.")
