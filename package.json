@@ -1,0 +1,27 @@
+{
+  "name": "@smilintux/skcomm",
+  "version": "0.1.1",
+  "description": "SKComm - Transport-agnostic P2P communication for sovereign AI agents. File, Syncthing, Nostr, WebSocket, Tailscale, WebRTC transports.",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "keywords": [
+    "skcomm",
+    "transport",
+    "p2p",
+    "messaging",
+    "webrtc",
+    "tailscale",
+    "sovereign",
+    "ai-agent"
+  ],
+  "author": "smilinTux <chefboyrdave2.1@gmail.com>",
+  "license": "GPL-3.0-or-later",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/smilinTux/skcomm.git"
+  },
+  "homepage": "https://github.com/smilinTux/skcomm",
+  "bugs": {
+    "url": "https://github.com/smilinTux/skcomm/issues"
+  }
+}
