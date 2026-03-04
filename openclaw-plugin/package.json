@@ -1,0 +1,32 @@
+{
+  "name": "skcomm-openclaw-plugin",
+  "version": "0.1.0",
+  "description": "OpenClaw plugin for SKComm — P2P Communication Layer",
+  "main": "src/index.ts",
+  "type": "module",
+  "openclaw": {
+    "plugin": {
+      "name": "skcomm",
+      "version": "0.1.0",
+      "displayName": "SKComm",
+      "description": "P2P communication with Syncthing and mDNS transports",
+      "author": "smilinTux Team",
+      "license": "AGPL-3.0",
+      "category": "communication",
+      "permissions": ["read", "write"],
+      "commands": [
+        "skcomm:send",
+        "skcomm:receive",
+        "skcomm:peers",
+        "skcomm:status",
+        "skcomm:discover"
+      ]
+    }
+  },
+  "peerDependencies": {
+    "openclaw": ">=1.0.0"
+  },
+  "keywords": ["openclaw", "openclaw-plugin", "skcomm", "p2p", "communication"],
+  "author": "smilinTux Team",
+  "license": "AGPL-3.0"
+}

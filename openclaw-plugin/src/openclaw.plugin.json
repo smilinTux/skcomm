@@ -1,0 +1,10 @@
+{
+  "id": "skcomm",
+  "name": "SKComm",
+  "description": "P2P communication layer — send/receive messages, discover peers, and check transport health via the skcomm CLI.",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {}
+  }
+}
