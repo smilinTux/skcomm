@@ -1,3 +1,10 @@
+---
+name: skcomm
+emoji: "\U0001F4E1"
+description: Transport-agnostic encrypted messaging layer for sovereign AI agents and humans.
+metadata: {"clawdbot":{"requires":{"bins":["skcomm"]},"install":[{"id":"pipx","kind":"shell","command":"pipx install 'skcomm[cli,crypto]'","bins":["skcomm","skcomm-mcp"],"label":"Install skcomm (pipx)"}]}}
+---
+
 # SKComm
 
 Transport-agnostic encrypted messaging layer for sovereign AI agents and humans.
