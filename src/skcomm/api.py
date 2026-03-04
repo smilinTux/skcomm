@@ -42,6 +42,29 @@ _skcomm: Optional[SKComm] = None
 # Global WebRTC signaling broker (initialized on startup)
 _broker: Optional[SignalingBroker] = None
 
+# Global ChatHistory instance (lazily initialized from skchat)
+_chat_history = None
+
+
+def _get_chat_history():
+    """Lazily import and return a ChatHistory instance backed by SKMemory.
+
+    Imports skchat at call time so the skcomm API can still start if skchat
+    is not installed.  The instance is cached after the first successful init.
+
+    Returns:
+        ChatHistory instance, or None if skchat is unavailable.
+    """
+    global _chat_history
+    if _chat_history is None:
+        try:
+            from skchat.history import ChatHistory  # noqa: PLC0415
+
+            _chat_history = ChatHistory.from_config()
+        except Exception as exc:
+            logger.debug("ChatHistory not available: %s", exc)
+    return _chat_history
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -361,6 +384,57 @@ async def root():
     }
 
 
+# ---------------------------------------------------------------------------
+# MCP tool relay — used by the consciousness-swipe browser extension.
+#
+# Accepts POST /mcp with body {"tool": str, "arguments": dict} and dispatches
+# to the corresponding local action.  Currently supports:
+#   - send_notification  →  notify-send desktop notification
+# ---------------------------------------------------------------------------
+
+class _MCPToolCallRequest(BaseModel):
+    tool: str
+    arguments: dict = Field(default_factory=dict)
+
+
+@app.post("/mcp", tags=["mcp"])
+async def mcp_tool_call(req: _MCPToolCallRequest):
+    """Relay an MCP tool call from the browser extension.
+
+    Accepts ``{"tool": "<name>", "arguments": {...}}`` and executes the
+    corresponding local action.  Returns ``{"ok": true}`` on success or
+    ``{"ok": false, "error": "<msg>"}`` on failure.
+
+    Currently supported tools:
+    - **send_notification**: fire a desktop notification via ``notify-send``.
+    """
+    import asyncio as _asyncio
+
+    if req.tool == "send_notification":
+        title = str(req.arguments.get("title", "")).strip()
+        body = str(req.arguments.get("body", "")).strip()
+        urgency = str(req.arguments.get("urgency", "normal"))
+        if urgency not in {"low", "normal", "critical"}:
+            urgency = "normal"
+        if not title:
+            raise HTTPException(status_code=400, detail="title is required")
+        if not body:
+            raise HTTPException(status_code=400, detail="body is required")
+
+        proc = await _asyncio.create_subprocess_exec(
+            "notify-send", "--urgency", urgency, title, body,
+            stdout=_asyncio.subprocess.DEVNULL,
+            stderr=_asyncio.subprocess.PIPE,
+        )
+        _, stderr = await proc.communicate()
+        if proc.returncode != 0:
+            err = stderr.decode(errors="replace").strip() if stderr else "unknown error"
+            return {"ok": False, "error": f"notify-send failed: {err}"}
+        return {"ok": True}
+
+    raise HTTPException(status_code=400, detail=f"Unknown tool: {req.tool}")
+
+
 @app.get("/api/v1/status", tags=["status"])
 async def get_status():
     """Get the current status of SKComm.
@@ -575,6 +649,39 @@ async def get_conversations():
                 except Exception:
                     continue
 
+    # ── Source 3: SKChat history (skmemory SQLite) ────────────────────
+    chat_hist = _get_chat_history()
+    if chat_hist is not None:
+        try:
+            for thread in chat_hist.list_threads(limit=200):
+                tid = thread.get("thread_id") or ""
+                if not tid or thread.get("message_count", 0) == 0:
+                    continue
+                thread_data = threads[tid]
+                thread_data["participants"].update(thread.get("participants", []))
+                thread_data["count"] = max(thread_data["count"], thread.get("message_count", 0))
+                # Fetch most recent message for preview/timestamp if not already set
+                if thread_data["last_at"] is None:
+                    msgs = chat_hist.get_thread_messages(tid, limit=1)
+                    if msgs:
+                        m = msgs[0]
+                        ts_raw = m.get("timestamp")
+                        ts = None
+                        if isinstance(ts_raw, str):
+                            try:
+                                ts = datetime.fromisoformat(ts_raw)
+                            except ValueError:
+                                pass
+                        elif isinstance(ts_raw, datetime):
+                            ts = ts_raw
+                        if ts is not None:
+                            if ts.tzinfo is None:
+                                ts = ts.replace(tzinfo=timezone.utc)
+                            thread_data["last_at"] = ts
+                            thread_data["preview"] = (m.get("content") or "")[:100]
+        except Exception as exc:
+            logger.warning("ChatHistory thread listing failed: %s", exc)
+
     _epoch = datetime.fromtimestamp(0, tz=timezone.utc)
     return [
         ConversationResponse(
@@ -600,6 +707,48 @@ class ConversationDetailResponse(BaseModel):
     participants: list[str]
     message_count: int
     messages: list[MessageEnvelopeResponse]
+
+
+class ChatMessageItem(BaseModel):
+    """A single chat message item for the Flutter conversation view.
+
+    Unified message representation that normalises fields from all three
+    storage sources (SKChat history, persistent outbox, Syncthing files).
+    """
+
+    id: str = Field(description="Message ID (chat_message_id or envelope_id)")
+    sender: str
+    recipient: str
+    content: str
+    content_type: str = "text/plain"
+    thread_id: Optional[str] = None
+    reply_to: Optional[str] = None
+    delivery_status: str = "delivered"
+    timestamp: datetime
+    encrypted: bool = False
+    source: str = Field(default="history", description="Storage source: history | outbox | syncthing")
+
+
+class ConversationMessagesResponse(BaseModel):
+    """Paginated message history for a conversation thread."""
+
+    conversation_id: str
+    participants: list[str]
+    total: int = Field(description="Total messages available (before pagination)")
+    limit: int
+    offset: int
+    messages: list[ChatMessageItem]
+
+
+def _looks_like_uuid(s: str) -> bool:
+    """Return True if *s* is a UUID v4 string (thread ID), False otherwise."""
+    import re as _re
+
+    _UUID_RE = _re.compile(
+        r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+        _re.I,
+    )
+    return bool(_UUID_RE.match(s))
 
 
 @app.get(
@@ -739,6 +888,220 @@ async def get_conversation(
         conversation_id=conversation_id,
         participants=sorted(participants),
         message_count=total,
+        messages=[msg for _, msg in page],
+    )
+
+
+@app.get(
+    "/api/v1/conversations/{conversation_id}/messages",
+    response_model=ConversationMessagesResponse,
+    tags=["messaging"],
+)
+async def get_conversation_messages(
+    conversation_id: str,
+    limit: int = 50,
+    offset: int = 0,
+):
+    """Get paginated message history for a conversation.
+
+    Merges messages from three sources and returns them oldest-first:
+
+    1. **SKChat history** (skmemory SQLite — persisted received/sent messages)
+    2. **Persistent outbox** (pending + dead-letter retry queues)
+    3. **Syncthing comms folders** (delivered ``.skc.json`` files)
+
+    Deduplication is performed by message/envelope ID across all sources.
+
+    Args:
+        conversation_id: Thread UUID or ``sender:recipient`` pair key.
+        limit: Maximum messages per page (default 50, max advised 200).
+        offset: Number of messages to skip for cursor-style pagination.
+
+    Returns:
+        ConversationMessagesResponse with ``total``, ``limit``, ``offset``,
+        and the paginated ``messages`` list.
+    """
+    import json as _json
+    import os as _os
+
+    _epoch = datetime.fromtimestamp(0, tz=timezone.utc)
+    participants: set[str] = set()
+    items: list[tuple[datetime, ChatMessageItem]] = []
+    seen_ids: set[str] = set()
+
+    # ── Source 1: SKChat history (skmemory SQLite) ────────────────────
+    chat_hist = _get_chat_history()
+    if chat_hist is not None:
+        try:
+            fetch_limit = max(limit + offset + 100, 200)
+            hist_msgs: list[dict] = []
+
+            # Always attempt thread_id lookup
+            thread_msgs = chat_hist.get_thread_messages(conversation_id, limit=fetch_limit)
+            hist_msgs.extend(thread_msgs)
+
+            # Also attempt sender:recipient DM lookup when the key contains ":"
+            # but is not a UUID (UUIDs contain "-" as separators, not ":")
+            if ":" in conversation_id and not _looks_like_uuid(conversation_id):
+                parts = conversation_id.split(":", 1)
+                if parts[0] and parts[1]:
+                    dm_msgs = chat_hist.get_conversation(parts[0], parts[1], limit=fetch_limit)
+                    hist_msgs.extend(dm_msgs)
+
+            for m in hist_msgs:
+                msg_id = m.get("chat_message_id") or m.get("memory_id") or ""
+                if msg_id and msg_id in seen_ids:
+                    continue
+                if msg_id:
+                    seen_ids.add(msg_id)
+                sender = m.get("sender", "unknown")
+                recipient = m.get("recipient", "unknown")
+                participants.update([sender, recipient])
+                ts_raw = m.get("timestamp")
+                ts = _epoch
+                if ts_raw:
+                    if isinstance(ts_raw, str):
+                        try:
+                            ts = datetime.fromisoformat(ts_raw)
+                        except ValueError:
+                            pass
+                    elif isinstance(ts_raw, datetime):
+                        ts = ts_raw
+                if ts.tzinfo is None:
+                    ts = ts.replace(tzinfo=timezone.utc)
+                items.append((
+                    ts,
+                    ChatMessageItem(
+                        id=msg_id,
+                        sender=sender,
+                        recipient=recipient,
+                        content=m.get("content", ""),
+                        content_type=m.get("content_type") or "text/plain",
+                        thread_id=m.get("thread_id"),
+                        reply_to=m.get("reply_to"),
+                        delivery_status=m.get("delivery_status") or "delivered",
+                        timestamp=ts,
+                        encrypted=False,
+                        source="history",
+                    ),
+                ))
+        except Exception as exc:
+            logger.warning("ChatHistory lookup failed for %s: %s", conversation_id, exc)
+
+    # ── Source 2: Persistent outbox (pending + dead-letter) ───────────
+    try:
+        outbox = PersistentOutbox()
+        all_entries = outbox.list_pending() + outbox.list_dead()
+    except Exception as exc:
+        logger.warning("Could not read outbox for conversation messages: %s", exc)
+        all_entries = []
+
+    for entry in all_entries:
+        try:
+            env = MessageEnvelope.from_bytes(entry.envelope_json.encode())
+            key = env.metadata.thread_id or f"{env.sender}:{env.recipient}"
+            if key != conversation_id:
+                continue
+            if env.envelope_id in seen_ids:
+                continue
+            seen_ids.add(env.envelope_id)
+            participants.update([env.sender, env.recipient])
+            ts = env.metadata.created_at
+            if ts.tzinfo is None:
+                ts = ts.replace(tzinfo=timezone.utc)
+            items.append((
+                ts,
+                ChatMessageItem(
+                    id=env.envelope_id,
+                    sender=env.sender,
+                    recipient=env.recipient,
+                    content=env.payload.content,
+                    content_type=str(env.payload.content_type),
+                    thread_id=env.metadata.thread_id,
+                    reply_to=env.metadata.in_reply_to,
+                    delivery_status="pending",
+                    timestamp=ts,
+                    encrypted=env.payload.encrypted,
+                    source="outbox",
+                ),
+            ))
+        except Exception:
+            continue
+
+    # ── Source 3: Syncthing comms folders (.skc.json files) ───────────
+    skcapstone_home = Path(
+        _os.environ.get("SKCAPSTONE_HOME", Path.home() / ".skcapstone")
+    )
+    comms_dirs = [
+        skcapstone_home / "sync" / "comms" / "outbox",
+        skcapstone_home / "sync" / "comms" / "inbox",
+    ]
+    for comms_dir in comms_dirs:
+        if not comms_dir.is_dir():
+            continue
+        for peer_dir in comms_dir.iterdir():
+            if not peer_dir.is_dir():
+                continue
+            if peer_dir.name == "*":
+                continue
+            for msg_file in peer_dir.glob("*.skc.json"):
+                try:
+                    raw = _json.loads(msg_file.read_text())
+                    eid = raw.get("envelope_id", "")
+                    if eid and eid in seen_ids:
+                        continue
+                    sender = raw.get("sender", "unknown")
+                    recipient = raw.get("recipient", "unknown")
+                    thread_id = raw.get("metadata", {}).get("thread_id")
+                    key = thread_id or f"{sender}:{recipient}"
+                    if key != conversation_id:
+                        continue
+                    payload = raw.get("payload", {})
+                    # Skip ACK messages — they're not conversation content
+                    if payload.get("content_type") == "ack":
+                        continue
+                    if eid:
+                        seen_ids.add(eid)
+                    meta = raw.get("metadata", {})
+                    ts = datetime.now(tz=timezone.utc)
+                    if meta.get("created_at"):
+                        try:
+                            ts = datetime.fromisoformat(meta["created_at"])
+                        except (ValueError, TypeError):
+                            pass
+                    if ts.tzinfo is None:
+                        ts = ts.replace(tzinfo=timezone.utc)
+                    participants.update([sender, recipient])
+                    items.append((
+                        ts,
+                        ChatMessageItem(
+                            id=eid or "",
+                            sender=sender,
+                            recipient=recipient,
+                            content=payload.get("content", ""),
+                            content_type=payload.get("content_type") or "text/plain",
+                            thread_id=thread_id,
+                            reply_to=meta.get("in_reply_to"),
+                            delivery_status="delivered",
+                            timestamp=ts,
+                            encrypted=payload.get("encrypted", False),
+                            source="syncthing",
+                        ),
+                    ))
+                except Exception:
+                    continue
+
+    # Sort oldest-first, then paginate.
+    items.sort(key=lambda x: x[0])
+    total = len(items)
+    page = items[offset: offset + limit]
+
+    return ConversationMessagesResponse(
+        conversation_id=conversation_id,
+        participants=sorted(participants),
+        total=total,
+        limit=limit,
+        offset=offset,
         messages=[msg for _, msg in page],
     )
 
@@ -1518,6 +1881,21 @@ except ImportError:
     logger.debug("Souls router not available")
 except Exception as _exc:
     logger.warning("Failed to register souls router: %s", _exc)
+
+
+# ---------------------------------------------------------------------------
+# DID (Decentralized Identity) router
+# ---------------------------------------------------------------------------
+
+try:
+    from .did_router import did_router as _did_router
+
+    app.include_router(_did_router)
+    logger.info("DID router registered (/.well-known/did.json + /api/v1/did/*)")
+except ImportError:
+    logger.debug("DID router not available")
+except Exception as _exc:
+    logger.warning("Failed to register DID router: %s", _exc)
 
 
 # ---------------------------------------------------------------------------
