@@ -1,7 +1,7 @@
 """
 Household API — multi-agent roster and per-agent data access.
 
-Scans ~/.skcapstone/agents/ for agent directories, cross-references
+Scans ~/.skcapstone/agent/ for agent directories, cross-references
 with heartbeat files for online/offline status, and serves per-agent
 identity, memories, and soul data.
 
