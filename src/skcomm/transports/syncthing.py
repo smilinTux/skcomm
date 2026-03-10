@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import shutil
 import time
 from datetime import datetime, timezone
@@ -87,6 +88,11 @@ class SyncthingTransport(Transport):
         self._archive = archive
         self._local_names: list[str] = []
 
+        # Auto-add agent name from env so per-agent receive works
+        agent_name = os.environ.get("SKCAPSTONE_AGENT")
+        if agent_name:
+            self._local_names.append(agent_name)
+
         if comms_root is None:
             self._root = Path("~/.skcapstone/comms").expanduser()
         else:
@@ -119,6 +125,14 @@ class SyncthingTransport(Transport):
                 self._local_names = [identity]
             elif isinstance(identity, list):
                 self._local_names = list(identity)
+
+        # Auto-detect agent name from SKCAPSTONE_AGENT env var so that
+        # per-agent receive works on shared machines (e.g. Jarvis receives
+        # from outbox/jarvis/ even though the global config identity is
+        # "Queen Lumina").
+        agent_name = os.environ.get("SKCAPSTONE_AGENT")
+        if agent_name and agent_name not in self._local_names:
+            self._local_names.append(agent_name)
 
     def _set_identity(self, name: str) -> None:
         """Set the local identity name for outbox scanning.

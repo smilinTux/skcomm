@@ -13,6 +13,16 @@ import { emptyPluginConfigSchema } from "openclaw/plugin-sdk";
 
 const SKCOMM_BIN = process.env.SKCOMM_BIN || "skcomm";
 const EXEC_TIMEOUT = 30_000;
+const IS_WIN = process.platform === "win32";
+
+function skenvPath(): string {
+  if (IS_WIN) {
+    const local = process.env.LOCALAPPDATA || "";
+    return `${local}\\skenv\\Scripts`;
+  }
+  const home = process.env.HOME || "";
+  return `${home}/.local/bin:${home}/.skenv/bin`;
+}
 
 function runCli(args: string): { ok: boolean; output: string } {
   try {
@@ -21,7 +31,7 @@ function runCli(args: string): { ok: boolean; output: string } {
       timeout: EXEC_TIMEOUT,
       env: {
         ...process.env,
-        PATH: `${process.env.HOME}/.local/bin:${process.env.HOME}/.skenv/bin:${process.env.PATH}`,
+        PATH: `${skenvPath()}${IS_WIN ? ";" : ":"}${process.env.PATH}`,
       },
     }).trim();
     return { ok: true, output: raw };

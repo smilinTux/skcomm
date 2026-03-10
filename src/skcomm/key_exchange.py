@@ -341,7 +341,7 @@ def import_peer_bundle(
     if not transports:
         # Default transports
         transports = [
-            PeerTransport(transport="syncthing", settings={"comms_root": "~/.skcapstone/sync/comms"}),
+            PeerTransport(transport="syncthing", settings={"comms_root": "~/.skcapstone/comms"}),
             PeerTransport(transport="file", settings={"inbox_path": "~/.skcomm/inbox"}),
         ]
 

@@ -186,7 +186,7 @@ SKCOMM_DEV_AUTH=1 skcomm serve   # Dev mode: disable CapAuth signature check
   "public_key": "-----BEGIN PGP PUBLIC KEY BLOCK-----\n...",
   "did_key": "did:key:z6Mkf5...",
   "transports": [
-    {"transport": "syncthing", "settings": {"comms_root": "~/SKComm Message Bridge"}},
+    {"transport": "syncthing", "settings": {"comms_root": "~/.skcapstone/comms"}},
     {"transport": "file", "settings": {"inbox_path": "~/.skcomm/inbox"}}
   ],
   "created_at": "2026-03-04T00:00:00+00:00"
