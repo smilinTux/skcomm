@@ -1,0 +1,17 @@
+[Unit]
+Description=SKComm Receive Daemon — multi-agent message poller
+Documentation=https://github.com/smilintux-org/skcomm
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h
+ExecStart=%h/.skenv/bin/skcomm daemon --all-agents --interval 5
+Restart=on-failure
+RestartSec=5s
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=skcomm-daemon
+
+[Install]
+WantedBy=default.target

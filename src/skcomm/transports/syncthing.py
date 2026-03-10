@@ -93,6 +93,8 @@ class SyncthingTransport(Transport):
         if agent_name:
             self._local_names.append(agent_name)
 
+        self._agents_mode: str | None = None  # "auto" or None
+
         if comms_root is None:
             self._root = Path("~/.skcapstone/comms").expanduser()
         else:
@@ -106,10 +108,14 @@ class SyncthingTransport(Transport):
         """Load transport-specific configuration.
 
         Args:
-            config: Dict with optional keys: comms_root, archive, identity.
+            config: Dict with optional keys: comms_root, archive, identity, agents.
                     identity (str or list[str]): local agent names so the
                     transport can pick up messages from outbox/{name}/ dirs
                     that arrive via bidirectional Syncthing sync.
+                    agents (str): Set to ``"auto"`` to auto-discover all agent
+                    names from ``~/.skcapstone/agents/`` and add them to the
+                    identity list. This lets a single daemon receive for
+                    every agent on the machine.
         """
         if "comms_root" in config:
             self._root = Path(config["comms_root"]).expanduser()
@@ -134,6 +140,13 @@ class SyncthingTransport(Transport):
         if agent_name and agent_name not in self._local_names:
             self._local_names.append(agent_name)
 
+        # Multi-agent mode: discover all agent directories and add their
+        # names so a single daemon can receive for every local agent.
+        agents_cfg = config.get("agents")
+        if agents_cfg == "auto":
+            self._agents_mode = "auto"
+            self._discover_agents()
+
     def _set_identity(self, name: str) -> None:
         """Set the local identity name for outbox scanning.
 
@@ -145,6 +158,32 @@ class SyncthingTransport(Transport):
         """
         if name and name not in self._local_names:
             self._local_names.append(name)
+
+    def _discover_agents(self) -> None:
+        """Auto-discover agent names from ~/.skcapstone/agents/.
+
+        Scans the agents directory for subdirectories and adds each
+        name to ``_local_names``. This enables a single receive daemon
+        to pick up messages for every agent on the machine.
+        """
+        skcapstone_home = os.environ.get("SKCAPSTONE_HOME", "")
+        if skcapstone_home:
+            agents_dir = Path(skcapstone_home) / "agents"
+        else:
+            agents_dir = Path("~/.skcapstone/agents").expanduser()
+
+        if not agents_dir.is_dir():
+            return
+
+        for entry in agents_dir.iterdir():
+            if (
+                entry.is_dir()
+                and not entry.name.startswith(".")
+                and not entry.name.endswith("-template")
+                and entry.name not in self._local_names
+            ):
+                self._local_names.append(entry.name)
+                logger.debug("Auto-discovered agent: %s", entry.name)
 
     def is_available(self) -> bool:
         """Check if the comms directories are accessible.

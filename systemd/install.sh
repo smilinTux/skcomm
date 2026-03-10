@@ -46,30 +46,55 @@ fi
 
 echo "Using Python: $PYTHON3"
 
-# ── Install unit ─────────────────────────────────────────────────────────────
+# ── Install units ────────────────────────────────────────────────────────────
 mkdir -p "${UNIT_DIR}"
+
+# API service (FastAPI)
 SRC="${SCRIPT_DIR}/skcomm.service"
 DST="${UNIT_DIR}/skcomm.service"
-
 sed "s|@@PYTHON3@@|${PYTHON3}|g" "$SRC" > "$DST"
 echo "Installed: $DST"
+
+# Receive daemon (multi-agent poller)
+SRC_DAEMON="${SCRIPT_DIR}/skcomm-daemon.service"
+DST_DAEMON="${UNIT_DIR}/skcomm-daemon.service"
+if [ -f "$SRC_DAEMON" ]; then
+    cp "$SRC_DAEMON" "$DST_DAEMON"
+    echo "Installed: $DST_DAEMON"
+fi
 
 systemctl --user daemon-reload
 
 if [ "$ENABLE" -eq 1 ]; then
     systemctl --user enable skcomm.service
     echo "Enabled skcomm.service (starts on login)"
+    if [ -f "$DST_DAEMON" ]; then
+        systemctl --user enable skcomm-daemon.service
+        echo "Enabled skcomm-daemon.service (starts on login)"
+    fi
 fi
 
 if [ "$START" -eq 1 ]; then
     systemctl --user start skcomm.service
     sleep 2
     systemctl --user status skcomm.service --no-pager | tail -8
+    if [ -f "$DST_DAEMON" ]; then
+        systemctl --user start skcomm-daemon.service
+        sleep 1
+        systemctl --user status skcomm-daemon.service --no-pager | tail -8
+    fi
 fi
 
 echo ""
-echo "SKComm daemon setup complete."
-echo "  Start:   systemctl --user start skcomm"
-echo "  Status:  systemctl --user status skcomm"
-echo "  Logs:    journalctl --user -u skcomm -f"
-echo "  API:     curl http://localhost:9384/api/v1/status"
+echo "SKComm setup complete."
+echo ""
+echo "  API service:"
+echo "    Start:   systemctl --user start skcomm"
+echo "    Status:  systemctl --user status skcomm"
+echo "    Logs:    journalctl --user -u skcomm -f"
+echo "    API:     curl http://localhost:9384/api/v1/status"
+echo ""
+echo "  Receive daemon (multi-agent):"
+echo "    Start:   systemctl --user start skcomm-daemon"
+echo "    Status:  systemctl --user status skcomm-daemon"
+echo "    Logs:    journalctl --user -u skcomm-daemon -f"

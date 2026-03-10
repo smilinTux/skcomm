@@ -185,6 +185,87 @@ def receive(config: Optional[str], json_out: bool):
 
 @main.command()
 @click.option("--config", "-c", default=None, help="Config file path.")
+@click.option("--interval", "-i", default=5, type=int, help="Poll interval in seconds.")
+@click.option("--all-agents", is_flag=True, help="Receive for all local agents (auto-discover).")
+def daemon(config: Optional[str], interval: int, all_agents: bool):
+    """Run a background receive daemon that polls for messages.
+
+    Continuously polls all configured transports at the given interval.
+    With --all-agents, discovers all agents in ~/.skcapstone/agents/
+    and receives for all of them with a single daemon.
+
+    \b
+    Examples:
+        skcomm daemon                    # Poll every 5s for current agent
+        skcomm daemon --all-agents       # Poll for all agents
+        skcomm daemon -i 10 --all-agents # Poll every 10s for all agents
+    """
+    import signal
+    import time
+
+    from .config import load_config
+    from .core import SKComm
+
+    cfg = load_config(config)
+
+    # If --all-agents, inject agents: auto into syncthing transport settings
+    if all_agents:
+        for tname, tconf in cfg.transports.items():
+            if tname == "syncthing":
+                tconf.settings["agents"] = "auto"
+
+    comm = SKComm.from_config(config)
+
+    # Re-configure syncthing transport if --all-agents was used
+    if all_agents:
+        for transport in comm.router.transports:
+            if hasattr(transport, "_agents_mode") and transport._agents_mode != "auto":
+                transport._agents_mode = "auto"
+                transport._discover_agents()
+
+    agent_name = comm.identity
+    agents_info = ""
+    for transport in comm.router.transports:
+        if hasattr(transport, "_local_names"):
+            agents_info = f" (scanning for: {', '.join(transport._local_names)})"
+            break
+
+    _print(f"\n  [bold]SKComm daemon started[/]")
+    _print(f"  Identity: [cyan]{agent_name}[/]{agents_info}")
+    _print(f"  Poll interval: {interval}s")
+    _print(f"  Press Ctrl+C to stop.\n")
+
+    running = True
+
+    def _shutdown(sig, frame):
+        nonlocal running
+        running = False
+
+    signal.signal(signal.SIGINT, _shutdown)
+    signal.signal(signal.SIGTERM, _shutdown)
+
+    total_received = 0
+    while running:
+        try:
+            envelopes = comm.receive()
+            if envelopes:
+                total_received += len(envelopes)
+                for env in envelopes:
+                    preview = env.payload.content[:60]
+                    urg = env.metadata.urgency.value.upper()
+                    _print(
+                        f"  [green]>[/] [{urg}] {env.sender} → {env.recipient}: {preview}"
+                    )
+        except Exception as exc:
+            _print(f"  [red]Error during receive: {exc}[/]")
+
+        time.sleep(interval)
+
+    _print(f"\n  Daemon stopped. {total_received} message(s) received total.\n")
+
+
+@main.command()
+@click.option("--config", "-c", default=None, help="Config file path.")
 @click.option("--json-out", is_flag=True, help="Output as JSON.")
 def status(config: Optional[str], json_out: bool):
     """Show SKComm status and transport health."""
