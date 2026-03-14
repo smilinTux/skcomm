@@ -63,38 +63,52 @@ if [ -f "$SRC_DAEMON" ]; then
     echo "Installed: $DST_DAEMON"
 fi
 
-systemctl --user daemon-reload
+if [[ "$(uname)" == "Darwin" ]]; then
+    echo ""
+    echo "NOTE: systemd is not available on macOS."
+    echo "Unit files have been written to ${UNIT_DIR} for reference,"
+    echo "but you will need to run SKComm manually or create a launchd plist."
+    echo ""
+    echo "  Manual start:"
+    echo "    ${PYTHON3} -m skcomm serve"
+    echo ""
+    echo "  Or create a launchd plist at:"
+    echo "    ~/Library/LaunchAgents/io.skworld.skcomm.plist"
+    echo ""
+else
+    systemctl --user daemon-reload
 
-if [ "$ENABLE" -eq 1 ]; then
-    systemctl --user enable skcomm.service
-    echo "Enabled skcomm.service (starts on login)"
-    if [ -f "$DST_DAEMON" ]; then
-        systemctl --user enable skcomm-daemon.service
-        echo "Enabled skcomm-daemon.service (starts on login)"
+    if [ "$ENABLE" -eq 1 ]; then
+        systemctl --user enable skcomm.service
+        echo "Enabled skcomm.service (starts on login)"
+        if [ -f "$DST_DAEMON" ]; then
+            systemctl --user enable skcomm-daemon.service
+            echo "Enabled skcomm-daemon.service (starts on login)"
+        fi
     fi
-fi
 
-if [ "$START" -eq 1 ]; then
-    systemctl --user start skcomm.service
-    sleep 2
-    systemctl --user status skcomm.service --no-pager | tail -8
-    if [ -f "$DST_DAEMON" ]; then
-        systemctl --user start skcomm-daemon.service
-        sleep 1
-        systemctl --user status skcomm-daemon.service --no-pager | tail -8
+    if [ "$START" -eq 1 ]; then
+        systemctl --user start skcomm.service
+        sleep 2
+        systemctl --user status skcomm.service --no-pager | tail -8
+        if [ -f "$DST_DAEMON" ]; then
+            systemctl --user start skcomm-daemon.service
+            sleep 1
+            systemctl --user status skcomm-daemon.service --no-pager | tail -8
+        fi
     fi
-fi
 
-echo ""
-echo "SKComm setup complete."
-echo ""
-echo "  API service:"
-echo "    Start:   systemctl --user start skcomm"
-echo "    Status:  systemctl --user status skcomm"
-echo "    Logs:    journalctl --user -u skcomm -f"
-echo "    API:     curl http://localhost:9384/api/v1/status"
-echo ""
-echo "  Receive daemon (multi-agent):"
-echo "    Start:   systemctl --user start skcomm-daemon"
-echo "    Status:  systemctl --user status skcomm-daemon"
-echo "    Logs:    journalctl --user -u skcomm-daemon -f"
+    echo ""
+    echo "SKComm setup complete."
+    echo ""
+    echo "  API service:"
+    echo "    Start:   systemctl --user start skcomm"
+    echo "    Status:  systemctl --user status skcomm"
+    echo "    Logs:    journalctl --user -u skcomm -f"
+    echo "    API:     curl http://localhost:9384/api/v1/status"
+    echo ""
+    echo "  Receive daemon (multi-agent):"
+    echo "    Start:   systemctl --user start skcomm-daemon"
+    echo "    Status:  systemctl --user status skcomm-daemon"
+    echo "    Logs:    journalctl --user -u skcomm-daemon -f"
+fi
