@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "skcomm"
-version = "0.1.1"
+version = "0.1.2"
 description = "Transport-agnostic, redundant, encrypted communication for sovereign AI agents"
 readme = "README.md"
 license = {text = "GPL-3.0-or-later"}
@@ -85,6 +85,9 @@ dev = [
     "pytest-cov>=4.0",
     "black>=24.0",
     "ruff>=0.3",
+    "fastapi>=0.109.0,<1.0.0",
+    "httpx>=0.27",
+    "pgpy>=0.6.0",
 ]
 
 [project.scripts]

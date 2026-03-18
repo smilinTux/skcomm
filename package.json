@@ -1,6 +1,6 @@
 {
   "name": "@smilintux/skcomm",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "SKComm - Transport-agnostic P2P communication for sovereign AI agents. File, Syncthing, Nostr, WebSocket, Tailscale, WebRTC transports.",
   "main": "index.js",
   "types": "index.d.ts",
