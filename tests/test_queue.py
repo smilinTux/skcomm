@@ -5,28 +5,26 @@ from __future__ import annotations
 import json
 import time
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
-
-import pytest
 
 from skcomm.queue import (
     ENVELOPE_SUFFIX,
     META_SUFFIX,
     MessageQueue,
     QueueMeta,
-    QueuedEnvelope,
 )
 
 
 def _make_envelope(envelope_id: str = "test-001", recipient: str = "lumina") -> bytes:
     """Create minimal envelope bytes for testing."""
-    return json.dumps({
-        "skcomm_version": "1.0.0",
-        "envelope_id": envelope_id,
-        "sender": "opus",
-        "recipient": recipient,
-        "payload": {"content": "hello", "content_type": "text"},
-    }).encode()
+    return json.dumps(
+        {
+            "skcomm_version": "1.0.0",
+            "envelope_id": envelope_id,
+            "sender": "opus",
+            "recipient": recipient,
+            "payload": {"content": "hello", "content_type": "text"},
+        }
+    ).encode()
 
 
 # ═══════════════════════════════════════════════════════════

@@ -10,8 +10,6 @@ Covers:
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
-
 import pytest
 
 from skcomm.models import MessageEnvelope, MessagePayload, MessageType
@@ -33,12 +31,16 @@ def _generate_test_keypair():
 
     key = pgpy.PGPKey.new(PubKeyAlgorithm.RSAEncryptOrSign, 2048)
     uid = pgpy.PGPUID.new("Test Agent", email="test@skcapstone.local")
-    key.add_uid(uid, usage={
-        KeyFlags.Sign,
-        KeyFlags.EncryptCommunications,
-        KeyFlags.EncryptStorage,
-    }, hashes=[HashAlgorithm.SHA256],
-        ciphers=[SymmetricKeyAlgorithm.AES256])
+    key.add_uid(
+        uid,
+        usage={
+            KeyFlags.Sign,
+            KeyFlags.EncryptCommunications,
+            KeyFlags.EncryptStorage,
+        },
+        hashes=[HashAlgorithm.SHA256],
+        ciphers=[SymmetricKeyAlgorithm.AES256],
+    )
 
     private_armor = str(key)
     public_armor = str(key.pubkey)

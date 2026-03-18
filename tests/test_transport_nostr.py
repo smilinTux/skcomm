@@ -149,13 +149,15 @@ def receiver() -> NostrTransport:
 @pytest.fixture()
 def sample_envelope_bytes() -> bytes:
     """Minimal serialised SKComm envelope."""
-    return json.dumps({
-        "skcomm_version": "1.0.0",
-        "envelope_id": "nostr-test-39ff64de",
-        "sender": "jarvis",
-        "recipient": "lumina",
-        "payload": {"content": "staycuriousANDkeepsmilin", "content_type": "text"},
-    }).encode()
+    return json.dumps(
+        {
+            "skcomm_version": "1.0.0",
+            "envelope_id": "nostr-test-39ff64de",
+            "sender": "jarvis",
+            "recipient": "lumina",
+            "payload": {"content": "staycuriousANDkeepsmilin", "content_type": "text"},
+        }
+    ).encode()
 
 
 # ---------------------------------------------------------------------------
@@ -207,9 +209,7 @@ async def test_send_publishes_signed_event(
     assert event["kind"] == KIND_GIFT_WRAP, (
         f"Expected kind {KIND_GIFT_WRAP} (gift wrap), got {event['kind']}"
     )
-    assert len(event.get("sig", "")) == 128, (
-        "BIP-340 Schnorr signature must be 128 hex characters"
-    )
+    assert len(event.get("sig", "")) == 128, "BIP-340 Schnorr signature must be 128 hex characters"
     assert "id" in event, "Published event must contain an id field"
 
 

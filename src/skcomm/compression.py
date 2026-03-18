@@ -106,8 +106,10 @@ def compress_payload(
 
     logger.debug(
         "Compressed %d -> %d bytes (%.0f%% reduction, %s)",
-        len(content_bytes), len(compressed),
-        (1 - ratio) * 100, algorithm.value,
+        len(content_bytes),
+        len(compressed),
+        (1 - ratio) * 100,
+        algorithm.value,
     )
 
     new_payload = MessagePayload(
@@ -145,11 +147,11 @@ def decompress_payload(envelope: MessageEnvelope) -> MessageEnvelope:
     content = payload.content
 
     if content.startswith(COMPRESSION_HEADER_ZSTD):
-        b64_data = content[len(COMPRESSION_HEADER_ZSTD):]
+        b64_data = content[len(COMPRESSION_HEADER_ZSTD) :]
         compressed = base64.b64decode(b64_data)
         decompressed = _decompress_zstd(compressed)
     elif content.startswith(COMPRESSION_HEADER_GZIP):
-        b64_data = content[len(COMPRESSION_HEADER_GZIP):]
+        b64_data = content[len(COMPRESSION_HEADER_GZIP) :]
         compressed = base64.b64decode(b64_data)
         decompressed = _decompress_gzip(compressed)
     else:

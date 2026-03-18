@@ -114,12 +114,8 @@ class TestMessageEnvelope:
 
     def test_unique_envelope_ids(self):
         """Expected: each envelope gets a distinct UUID."""
-        e1 = MessageEnvelope(
-            sender="a", recipient="b", payload=MessagePayload(content="x")
-        )
-        e2 = MessageEnvelope(
-            sender="a", recipient="b", payload=MessagePayload(content="x")
-        )
+        e1 = MessageEnvelope(sender="a", recipient="b", payload=MessagePayload(content="x"))
+        e2 = MessageEnvelope(sender="a", recipient="b", payload=MessagePayload(content="x"))
         assert e1.envelope_id != e2.envelope_id
 
     def test_serialization_roundtrip(self, basic_envelope):

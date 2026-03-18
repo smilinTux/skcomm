@@ -59,9 +59,7 @@ class SKCommConfig(BaseModel):
     sign: bool = True
     ack: bool = True
     retry_max: int = 5
-    retry_backoff: list[int] = Field(
-        default_factory=lambda: [5, 15, 60, 300, 900]
-    )
+    retry_backoff: list[int] = Field(default_factory=lambda: [5, 15, 60, 300, 900])
     ttl: int = 86400
     daemon: DaemonConfig = Field(default_factory=DaemonConfig)
     transports: dict[str, TransportConfig] = Field(default_factory=dict)

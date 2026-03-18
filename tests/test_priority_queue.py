@@ -144,9 +144,7 @@ class TestSKCommReceivePriority:
         assert urgencies == [Urgency.CRITICAL, Urgency.HIGH, Urgency.NORMAL, Urgency.LOW]
 
     def test_receive_all_critical(self):
-        comm = self._comm_with_messages(
-            [Urgency.CRITICAL, Urgency.CRITICAL, Urgency.CRITICAL]
-        )
+        comm = self._comm_with_messages([Urgency.CRITICAL, Urgency.CRITICAL, Urgency.CRITICAL])
         messages = comm.receive()
         assert all(m.metadata.urgency == Urgency.CRITICAL for m in messages)
         assert len(messages) == 3

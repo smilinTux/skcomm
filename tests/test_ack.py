@@ -4,9 +4,6 @@ from __future__ import annotations
 
 import time
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
-
-import pytest
 
 from skcomm.ack import (
     ACK_SUFFIX,
@@ -18,11 +15,8 @@ from skcomm.ack import (
 )
 from skcomm.models import (
     MessageEnvelope,
-    MessageMetadata,
     MessagePayload,
-    MessageType,
     RoutingConfig,
-    Urgency,
 )
 
 
@@ -70,8 +64,11 @@ class TestPendingAck:
     def test_confirmed_not_expired(self):
         old = datetime.now(timezone.utc) - timedelta(seconds=400)
         p = PendingAck(
-            envelope_id="e-004", recipient="x", sent_at=old,
-            ack_timeout=300, status=AckStatus.CONFIRMED,
+            envelope_id="e-004",
+            recipient="x",
+            sent_at=old,
+            ack_timeout=300,
+            status=AckStatus.CONFIRMED,
         )
         assert p.is_expired is False
 

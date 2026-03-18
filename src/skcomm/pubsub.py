@@ -29,12 +29,10 @@ Usage:
 
 from __future__ import annotations
 
-import fnmatch
 import logging
 import re
 import threading
 import uuid
-from collections import defaultdict
 from datetime import datetime, timezone
 from typing import Any, Callable, Optional
 
@@ -79,9 +77,7 @@ class PubSubMessage(BaseModel):
     topic: str
     payload: dict[str, Any] = Field(default_factory=dict)
     sender: str = "anonymous"
-    timestamp: datetime = Field(
-        default_factory=lambda: datetime.now(timezone.utc)
-    )
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     message_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
 
 
@@ -155,9 +151,7 @@ def _pattern_to_regex(pattern: str) -> re.Pattern[str]:
 
         if seg == "#":
             if not is_last:
-                raise ValueError(
-                    f"'#' wildcard must be the last segment in pattern: {pattern!r}"
-                )
+                raise ValueError(f"'#' wildcard must be the last segment in pattern: {pattern!r}")
             # '#' matches one or more dot-separated levels
             parts.append(r"[^.]+(\.[^.]+)*")
         elif seg == "*":
@@ -166,7 +160,7 @@ def _pattern_to_regex(pattern: str) -> re.Pattern[str]:
         else:
             parts.append(re.escape(seg))
 
-    regex = r"\." .join(parts)
+    regex = r"\.".join(parts)
     return re.compile(f"^{regex}$")
 
 
@@ -223,9 +217,7 @@ class PubSubBroker:
     # Public API
     # ------------------------------------------------------------------
 
-    def subscribe(
-        self, topic: str, callback: Callable[[PubSubMessage], Any]
-    ) -> None:
+    def subscribe(self, topic: str, callback: Callable[[PubSubMessage], Any]) -> None:
         """Register a callback for messages matching *topic*.
 
         The same callback can be subscribed to multiple patterns.
@@ -266,9 +258,7 @@ class PubSubBroker:
                 len(self._subscriptions),
             )
 
-    def unsubscribe(
-        self, topic: str, callback: Callable[[PubSubMessage], Any]
-    ) -> bool:
+    def unsubscribe(self, topic: str, callback: Callable[[PubSubMessage], Any]) -> bool:
         """Remove a callback previously registered for *topic*.
 
         Args:
@@ -287,9 +277,7 @@ class PubSubBroker:
             ]
             removed = len(self._subscriptions) < before
             if removed:
-                logger.debug(
-                    "Broker[%s]: unsubscribed from %r", self._name, topic
-                )
+                logger.debug("Broker[%s]: unsubscribed from %r", self._name, topic)
             else:
                 logger.debug(
                     "Broker[%s]: unsubscribe no-op for %r (not found)",
@@ -323,9 +311,7 @@ class PubSubBroker:
             ValueError: If *topic* contains wildcard characters.
         """
         if "*" in topic or "#" in topic:
-            raise ValueError(
-                f"Published topic must not contain wildcards: {topic!r}"
-            )
+            raise ValueError(f"Published topic must not contain wildcards: {topic!r}")
 
         msg = PubSubMessage(
             topic=topic,
@@ -334,9 +320,7 @@ class PubSubBroker:
         )
 
         with self._lock:
-            matching: list[_Subscription] = [
-                s for s in self._subscriptions if s.matches(topic)
-            ]
+            matching: list[_Subscription] = [s for s in self._subscriptions if s.matches(topic)]
             self._published_topics.add(topic)
 
         logger.debug(

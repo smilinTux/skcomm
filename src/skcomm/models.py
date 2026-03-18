@@ -61,9 +61,7 @@ class RoutingConfig(BaseModel):
     mode: RoutingMode = RoutingMode.FAILOVER
     preferred_transports: list[str] = Field(default_factory=list)
     retry_max: int = 5
-    retry_backoff: list[int] = Field(
-        default_factory=lambda: [5, 15, 60, 300, 900]
-    )
+    retry_backoff: list[int] = Field(default_factory=lambda: [5, 15, 60, 300, 900])
     ttl: int = 86400
     ack_requested: bool = True
 

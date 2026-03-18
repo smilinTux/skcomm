@@ -24,7 +24,6 @@ from __future__ import annotations
 import asyncio
 import fractions
 import logging
-import struct
 import time
 from typing import Optional
 
@@ -114,7 +113,9 @@ class TTSAudioTrack:
 
         logger.info(
             "TTSAudioTrack initialized: input=%dHz, output=%dHz, %dch",
-            input_sample_rate, OUTPUT_SAMPLE_RATE, channels,
+            input_sample_rate,
+            OUTPUT_SAMPLE_RATE,
+            channels,
         )
 
     async def recv(self):
@@ -133,9 +134,7 @@ class TTSAudioTrack:
             self._start_time = time.monotonic()
 
         # Pace to 20ms intervals
-        expected_time = self._start_time + (
-            self._frame_count * FRAME_DURATION_MS / 1000.0
-        )
+        expected_time = self._start_time + (self._frame_count * FRAME_DURATION_MS / 1000.0)
         now = time.monotonic()
         if now < expected_time:
             await asyncio.sleep(expected_time - now)

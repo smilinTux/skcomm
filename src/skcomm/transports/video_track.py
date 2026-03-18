@@ -107,7 +107,9 @@ class MuseTalkVideoTrack:
 
         logger.info(
             "MuseTalkVideoTrack initialized: %dx%d @ %d FPS",
-            width, height, fps,
+            width,
+            height,
+            fps,
         )
 
     async def recv(self):
@@ -120,7 +122,6 @@ class MuseTalkVideoTrack:
         Returns:
             av.VideoFrame in yuv420p format with correct PTS and time_base.
         """
-        import av
 
         # Initialize start time on first call
         if self._start_time is None:

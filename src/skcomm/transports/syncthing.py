@@ -34,7 +34,6 @@ import logging
 import os
 import shutil
 import time
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -273,9 +272,7 @@ class SyncthingTransport(Transport):
         scan_dirs: list[Path] = []
 
         if self._inbox.exists():
-            scan_dirs.extend(
-                d for d in self._inbox.iterdir() if d.is_dir()
-            )
+            scan_dirs.extend(d for d in self._inbox.iterdir() if d.is_dir())
 
         # Also scan outbox/{local_name}/ for messages arriving via
         # bidirectional Syncthing sync.
@@ -302,9 +299,7 @@ class SyncthingTransport(Transport):
                     logger.debug("Received envelope from %s: %s", peer_dir.name, env_file.name)
 
                 except OSError as exc:
-                    logger.warning(
-                        "Failed to read envelope %s: %s", env_file, exc
-                    )
+                    logger.warning("Failed to read envelope %s: %s", env_file, exc)
 
         return received
 
@@ -336,8 +331,7 @@ class SyncthingTransport(Transport):
                 else []
             )
             inbox_count = sum(
-                len(list((self._inbox / p).glob(f"*{ENVELOPE_SUFFIX}")))
-                for p in inbox_peers
+                len(list((self._inbox / p).glob(f"*{ENVELOPE_SUFFIX}"))) for p in inbox_peers
             )
 
             disk_warning = self._check_disk_space()
@@ -393,7 +387,7 @@ class SyncthingTransport(Transport):
         try:
             usage = _shutil.disk_usage(self._root)
             free_pct = (usage.free / usage.total) * 100
-            free_gb = usage.free / (1024 ** 3)
+            free_gb = usage.free / (1024**3)
 
             if free_gb < 1.0:
                 return (

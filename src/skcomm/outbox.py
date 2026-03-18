@@ -21,7 +21,6 @@ from __future__ import annotations
 import json
 import logging
 import threading
-import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Optional
@@ -142,9 +141,7 @@ class PersistentOutbox:
             try:
                 entry = self._load_entry(entry_path)
             except (json.JSONDecodeError, ValueError, OSError) as exc:
-                logger.warning(
-                    "Skipping corrupt outbox entry %s: %s", entry_path.name, exc
-                )
+                logger.warning("Skipping corrupt outbox entry %s: %s", entry_path.name, exc)
                 continue
 
             if entry.next_retry_at and entry.next_retry_at > now:
@@ -161,8 +158,11 @@ class PersistentOutbox:
             elif entry.attempt_count >= entry.max_retries:
                 self._move_to_dead(entry, entry_path)
                 results["dead_lettered"] += 1
-                logger.warning("Dead-lettered %s after %d attempts",
-                               entry.envelope_id[:8], entry.attempt_count)
+                logger.warning(
+                    "Dead-lettered %s after %d attempts",
+                    entry.envelope_id[:8],
+                    entry.attempt_count,
+                )
             else:
                 entry.attempt_count += 1
                 entry.last_attempt = now
@@ -219,7 +219,8 @@ class PersistentOutbox:
             except (json.JSONDecodeError, ValueError, OSError) as exc:
                 logger.warning(
                     "Skipping corrupt dead-letter entry %s: %s",
-                    entry_path.name, exc,
+                    entry_path.name,
+                    exc,
                 )
                 continue
 
@@ -282,8 +283,10 @@ class PersistentOutbox:
                 if results["retried"] > 0:
                     logger.info(
                         "Outbox sweep: retried=%d delivered=%d dead=%d skipped=%d",
-                        results["retried"], results["delivered"],
-                        results["dead_lettered"], results["skipped"],
+                        results["retried"],
+                        results["delivered"],
+                        results["dead_lettered"],
+                        results["skipped"],
                     )
             except Exception as exc:
                 logger.warning("Outbox retry sweep error: %s", exc)
@@ -311,21 +314,24 @@ class PersistentOutbox:
             entry.last_error = str(exc)
             logger.warning(
                 "Outbox delivery failed for %s (bad envelope): %s",
-                entry.envelope_id[:8], exc,
+                entry.envelope_id[:8],
+                exc,
             )
             return False
         except OSError as exc:
             entry.last_error = str(exc)
             logger.warning(
                 "Outbox delivery failed for %s (I/O error): %s",
-                entry.envelope_id[:8], exc,
+                entry.envelope_id[:8],
+                exc,
             )
             return False
         except Exception as exc:
             entry.last_error = str(exc)
             logger.warning(
                 "Outbox delivery failed for %s: %s",
-                entry.envelope_id[:8], exc,
+                entry.envelope_id[:8],
+                exc,
             )
             return False
 

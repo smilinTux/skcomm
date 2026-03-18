@@ -46,14 +46,12 @@ from ..transport import (
 
 logger = logging.getLogger("skcomm.transports.webrtc")
 
-DEFAULT_SIGNALING_URL = os.environ.get(
-    "SKCOMM_SIGNALING_URL", "wss://localhost:9384/webrtc/ws"
-)
+DEFAULT_SIGNALING_URL = os.environ.get("SKCOMM_SIGNALING_URL", "wss://localhost:9384/webrtc/ws")
 CHANNEL_NAME = "skcomm"
-ICE_GATHER_TIMEOUT = 30.0    # seconds to wait for ICE gathering
-RECV_TIMEOUT = 1.0            # seconds for signaling recv poll
-SEND_TIMEOUT = 5.0            # seconds for send future.result()
-CONNECT_SETTLE = 0.3          # seconds to wait after starting the loop thread
+ICE_GATHER_TIMEOUT = 30.0  # seconds to wait for ICE gathering
+RECV_TIMEOUT = 1.0  # seconds for signaling recv poll
+SEND_TIMEOUT = 5.0  # seconds for send future.result()
+CONNECT_SETTLE = 0.3  # seconds to wait after starting the loop thread
 
 
 @dataclass
@@ -70,8 +68,8 @@ class PeerConnection:
     """
 
     peer_fingerprint: str
-    pc: object                           # RTCPeerConnection
-    channel: Optional[object] = None    # RTCDataChannel
+    pc: object  # RTCPeerConnection
+    channel: Optional[object] = None  # RTCDataChannel
     connected: bool = False
     negotiating: bool = False
     pending: list[bytes] = field(default_factory=list)
@@ -609,6 +607,7 @@ class WebRTCTransport(Transport):
             if capauth_wrapper:
                 try:
                     from ..capauth_validator import CapAuthValidator
+
                     validator = CapAuthValidator()
                     sig = capauth_wrapper.get("signature", "")
                     signed_payload = capauth_wrapper.get("signed_payload", "")
@@ -635,8 +634,7 @@ class WebRTCTransport(Transport):
                     )
                 except Exception as exc:
                     logger.warning(
-                        "WebRTC: SDP signature verification failed for %s: %s — "
-                        "rejecting signal",
+                        "WebRTC: SDP signature verification failed for %s: %s — rejecting signal",
                         from_id[:8],
                         exc,
                     )
@@ -706,7 +704,7 @@ class WebRTCTransport(Transport):
                             # Strip the "candidate:" prefix that browsers include
                             sdp_line = candidate_str
                             if sdp_line.startswith("candidate:"):
-                                sdp_line = sdp_line[len("candidate:"):]
+                                sdp_line = sdp_line[len("candidate:") :]
 
                             ice_candidate = candidate_from_sdp(sdp_line)
                             ice_candidate.sdpMid = ice_data.get("sdpMid")
@@ -797,7 +795,9 @@ class WebRTCTransport(Transport):
                     peer.peer_fingerprint[:8],
                 )
                 return
-            logger.debug("WebRTC: received %d bytes from %s", len(message), peer.peer_fingerprint[:8])
+            logger.debug(
+                "WebRTC: received %d bytes from %s", len(message), peer.peer_fingerprint[:8]
+            )
 
         @channel.on("close")
         def _on_close():

@@ -7,14 +7,10 @@ send/receive calls for assertion in tests.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Optional
-
 import pytest
 
 from skcomm.models import MessageEnvelope, MessagePayload
 from skcomm.transport import (
-    DeliveryReport,
     HealthStatus,
     SendResult,
     Transport,

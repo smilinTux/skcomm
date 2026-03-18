@@ -14,8 +14,6 @@ Mount in the SKComm FastAPI app:
 from __future__ import annotations
 
 import logging
-import shutil
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
@@ -43,7 +41,7 @@ async def _require_capauth(
     Returns the authenticated PGP fingerprint.
     Raises 401 if invalid or missing.
     """
-    from fastapi import Request
+
     # FastAPI doesn't inject raw headers automatically for non-standard
     # patterns, so we use a workaround via the Security dependency below.
     pass
@@ -98,9 +96,8 @@ def _agent_home() -> Path:
     global _SKCAPSTONE_HOME
     if _SKCAPSTONE_HOME is None:
         import os
-        _SKCAPSTONE_HOME = Path(
-            os.environ.get("SKCAPSTONE_HOME", "~/.skcapstone")
-        ).expanduser()
+
+        _SKCAPSTONE_HOME = Path(os.environ.get("SKCAPSTONE_HOME", "~/.skcapstone")).expanduser()
     return _SKCAPSTONE_HOME
 
 
@@ -203,14 +200,17 @@ async def get_identity(fingerprint: str = Depends(require_auth)):
 @profile_router.get("/memories")
 async def get_memories(
     fingerprint: str = Depends(require_auth),
-    layer: Optional[str] = Query(None, description="Filter by layer: short-term, mid-term, long-term"),
+    layer: Optional[str] = Query(
+        None, description="Filter by layer: short-term, mid-term, long-term"
+    ),
     limit: int = Query(20, ge=1, le=200, description="Max results"),
     offset: int = Query(0, ge=0, description="Skip N results"),
     q: Optional[str] = Query(None, description="Search query"),
 ):
     """Paginated memory list with optional search."""
     try:
-        from skcapstone.memory_engine import list_memories, search as search_memories
+        from skcapstone.memory_engine import list_memories
+        from skcapstone.memory_engine import search as search_memories
         from skcapstone.models import MemoryLayer
 
         home = _agent_home()
@@ -221,7 +221,7 @@ async def get_memories(
         else:
             entries = list_memories(home, layer=mem_layer, limit=limit + offset)
 
-        page = entries[offset: offset + limit]
+        page = entries[offset : offset + limit]
         return {
             "total": len(entries),
             "offset": offset,
@@ -477,18 +477,29 @@ async def get_storage(fingerprint: str = Depends(require_auth)):
     if acks_dir.is_dir():
         ack_size = _dir_size_bytes(acks_dir)
         ack_count = sum(1 for f in acks_dir.iterdir() if f.is_file())
-        bloat["acks"] = {"path": str(acks_dir), "size_mb": round(ack_size / (1024 * 1024), 1), "file_count": ack_count}
+        bloat["acks"] = {
+            "path": str(acks_dir),
+            "size_mb": round(ack_size / (1024 * 1024), 1),
+            "file_count": ack_count,
+        }
 
     seed_dir = _agent_home() / "sync" / "sync" / "outbox"
     if seed_dir.is_dir():
         seed_size = _dir_size_bytes(seed_dir)
         seed_count = sum(1 for f in seed_dir.iterdir() if f.is_file())
-        bloat["seeds"] = {"path": str(seed_dir), "size_mb": round(seed_size / (1024 * 1024), 1), "file_count": seed_count}
+        bloat["seeds"] = {
+            "path": str(seed_dir),
+            "size_mb": round(seed_size / (1024 * 1024), 1),
+            "file_count": seed_count,
+        }
 
     comms_dir = _agent_home() / "sync" / "comms" / "outbox"
     if comms_dir.is_dir():
         comms_size = _dir_size_bytes(comms_dir)
-        bloat["comms_outbox"] = {"path": str(comms_dir), "size_mb": round(comms_size / (1024 * 1024), 1)}
+        bloat["comms_outbox"] = {
+            "path": str(comms_dir),
+            "size_mb": round(comms_size / (1024 * 1024), 1),
+        }
 
     result["total_mb"] = round(total / (1024 * 1024), 1)
     result["bloat"] = bloat

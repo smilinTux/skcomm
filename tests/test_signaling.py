@@ -3,12 +3,11 @@
 from __future__ import annotations
 
 import json
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from skcomm.signaling import SignalingBroker, WebRTCRoom, signaling_ws_endpoint
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -399,10 +398,7 @@ class TestSignalingBrokerHandleConnection:
 
         # Room should have been created (and then cleaned up since peer left)
         # The test just ensures no exception is raised and welcome was sent
-        welcome_calls = [
-            call for call in ws.send_text.call_args_list
-            if '"welcome"' in call[0][0]
-        ]
+        welcome_calls = [call for call in ws.send_text.call_args_list if '"welcome"' in call[0][0]]
         assert len(welcome_calls) == 1
 
     @pytest.mark.asyncio
@@ -424,8 +420,7 @@ class TestSignalingBrokerHandleConnection:
 
         # PEER_B should have received a signal from PEER_A
         relayed = [
-            json.loads(c[0][0]) for c in ws_b.send_text.call_args_list
-            if '"signal"' in c[0][0]
+            json.loads(c[0][0]) for c in ws_b.send_text.call_args_list if '"signal"' in c[0][0]
         ]
         assert len(relayed) == 1
         assert relayed[0]["from"] == PEER_A
@@ -465,7 +460,10 @@ class TestSignalingWsEndpoint:
         await signaling_ws_endpoint(ws=ws, room=ROOM_ID, peer=PEER_A, broker=broker)
 
         ws.accept.assert_called_once()
-        ws.close.assert_called_once_with(code=4401, reason=pytest.approx("Unauthorized: invalid or missing CapAuth token", rel=1e-3))
+        ws.close.assert_called_once_with(
+            code=4401,
+            reason=pytest.approx("Unauthorized: invalid or missing CapAuth token", rel=1e-3),
+        )
 
     @pytest.mark.asyncio
     async def test_authenticated_connection_uses_auth_fp(self):

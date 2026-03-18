@@ -92,6 +92,7 @@ class QueueMeta(BaseModel):
             delay = 0
 
         from datetime import timedelta
+
         self.next_retry = now + timedelta(seconds=delay)
 
 

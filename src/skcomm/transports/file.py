@@ -44,8 +44,8 @@ logger = logging.getLogger("skcomm.transports.file")
 ENVELOPE_SUFFIX = ".skc.json"
 
 # Chunked file upload constants
-LARGE_FILE_THRESHOLD = 10 * 1024 * 1024   # 10 MB — threshold to trigger chunking
-TRANSFER_CHUNK_SIZE  =  1 * 1024 * 1024   # 1 MB  — size of each chunk
+LARGE_FILE_THRESHOLD = 10 * 1024 * 1024  # 10 MB — threshold to trigger chunking
+TRANSFER_CHUNK_SIZE = 1 * 1024 * 1024  # 1 MB  — size of each chunk
 
 
 @dataclass
@@ -142,12 +142,16 @@ class FileTransport(Transport):
         self._archive = archive
         self._poll_interval_ms = poll_interval_ms
 
-        self._outbox = Path(outbox_path).expanduser() if outbox_path else Path("~/.skcomm/outbox").expanduser()
-        self._inbox = Path(inbox_path).expanduser() if inbox_path else Path("~/.skcomm/inbox").expanduser()
+        self._outbox = (
+            Path(outbox_path).expanduser()
+            if outbox_path
+            else Path("~/.skcomm/outbox").expanduser()
+        )
+        self._inbox = (
+            Path(inbox_path).expanduser() if inbox_path else Path("~/.skcomm/inbox").expanduser()
+        )
         self._archive_dir = (
-            Path(archive_path).expanduser()
-            if archive_path
-            else self._inbox.parent / "archive"
+            Path(archive_path).expanduser() if archive_path else self._inbox.parent / "archive"
         )
 
     def configure(self, config: dict) -> None:
@@ -352,28 +356,29 @@ class FileTransport(Transport):
             verified = sum(1 for c in state.chunks if c.verified)
             logger.info(
                 "Resuming transfer %s: %d/%d chunks already verified",
-                transfer_id, verified, state.total_chunks,
+                transfer_id,
+                verified,
+                state.total_chunks,
             )
         else:
             file_data = file_path.read_bytes()
             file_size = len(file_data)
             file_sha256 = hashlib.sha256(file_data).hexdigest()
-            chunk_size = (
-                TRANSFER_CHUNK_SIZE if file_size > LARGE_FILE_THRESHOLD
-                else file_size
-            )
+            chunk_size = TRANSFER_CHUNK_SIZE if file_size > LARGE_FILE_THRESHOLD else file_size
             total_chunks = max(1, (file_size + chunk_size - 1) // chunk_size)
 
             chunks = []
             for i in range(total_chunks):
                 offset = i * chunk_size
                 end = min(offset + chunk_size, file_size)
-                chunks.append(_ChunkRecord(
-                    index=i,
-                    offset=offset,
-                    size=end - offset,
-                    sha256=hashlib.sha256(file_data[offset:end]).hexdigest(),
-                ))
+                chunks.append(
+                    _ChunkRecord(
+                        index=i,
+                        offset=offset,
+                        size=end - offset,
+                        sha256=hashlib.sha256(file_data[offset:end]).hexdigest(),
+                    )
+                )
 
             state = _TransferState(
                 transfer_id=transfer_id,
@@ -428,12 +433,13 @@ class FileTransport(Transport):
                 if not chunk.verified:
                     continue
                 actual = hashlib.sha256(
-                    file_data[chunk.offset: chunk.offset + chunk.size]
+                    file_data[chunk.offset : chunk.offset + chunk.size]
                 ).hexdigest()
                 if actual != chunk.sha256:
                     logger.warning(
                         "Chunk %d sha256 mismatch on resume (transfer %s) — will resend",
-                        chunk.index, transfer_id,
+                        chunk.index,
+                        transfer_id,
                     )
                     chunk.verified = False
             state.save(sdir)
@@ -459,11 +465,13 @@ class FileTransport(Transport):
             if chunk.verified:
                 logger.debug(
                     "Skip verified chunk %d/%d (transfer %s)",
-                    chunk.index + 1, state.total_chunks, state.transfer_id,
+                    chunk.index + 1,
+                    state.total_chunks,
+                    state.transfer_id,
                 )
                 continue
 
-            chunk_data = file_data[chunk.offset: chunk.offset + chunk.size]
+            chunk_data = file_data[chunk.offset : chunk.offset + chunk.size]
 
             # Verify integrity before sending
             actual = hashlib.sha256(chunk_data).hexdigest()
@@ -504,7 +512,9 @@ class FileTransport(Transport):
 
             logger.debug(
                 "Wrote chunk %d/%d → %s",
-                chunk.index + 1, state.total_chunks, filename,
+                chunk.index + 1,
+                state.total_chunks,
+                filename,
             )
 
             if progress_callback:
@@ -514,7 +524,10 @@ class FileTransport(Transport):
         state.save(state_dir)
         logger.info(
             "Transfer %s complete: %s (%d chunks, %d bytes)",
-            state.transfer_id, state.filename, state.total_chunks, state.file_size,
+            state.transfer_id,
+            state.filename,
+            state.total_chunks,
+            state.file_size,
         )
         return state.transfer_id
 

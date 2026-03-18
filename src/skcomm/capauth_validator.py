@@ -145,18 +145,14 @@ class CapAuthValidator:
                     fingerprint_raw,
                 )
                 return fingerprint_raw
-            logger.warning(
-                "CapAuth local: expected 3-part token (fingerprint.ts.sig), got 1 part"
-            )
+            logger.warning("CapAuth local: expected 3-part token (fingerprint.ts.sig), got 1 part")
             return None
 
         # ------------------------------------------------------------------ #
         # Validate the fingerprint portion.                                   #
         # ------------------------------------------------------------------ #
         if not _FINGERPRINT_RE.match(fingerprint_raw):
-            logger.warning(
-                "CapAuth local: fingerprint part is not valid 40-hex: %.12s…", token
-            )
+            logger.warning("CapAuth local: fingerprint part is not valid 40-hex: %.12s…", token)
             return None
 
         # ------------------------------------------------------------------ #
@@ -183,8 +179,7 @@ class CapAuthValidator:
         skew = abs(int(time.time()) - token_ts)
         if skew > _TOKEN_WINDOW_SECS:
             logger.warning(
-                "CapAuth local: token expired or future-dated "
-                "(skew=%ds, max=%ds) for %s",
+                "CapAuth local: token expired or future-dated (skew=%ds, max=%ds) for %s",
                 skew,
                 _TOKEN_WINDOW_SECS,
                 fingerprint,
@@ -204,9 +199,7 @@ class CapAuthValidator:
 
             pub_key = self._load_public_key(fingerprint)
             if pub_key is None:
-                logger.warning(
-                    "CapAuth local: public key not found for %s", fingerprint
-                )
+                logger.warning("CapAuth local: public key not found for %s", fingerprint)
                 return None if self._require_auth else fingerprint
 
             # The message that was signed: "capauth:<FINGERPRINT>:<TIMESTAMP>"
@@ -216,9 +209,7 @@ class CapAuthValidator:
                 logger.debug("CapAuth local: PGP sig valid for %s", fingerprint)
                 return fingerprint
 
-            logger.warning(
-                "CapAuth local: PGP signature INVALID for %s", fingerprint
-            )
+            logger.warning("CapAuth local: PGP signature INVALID for %s", fingerprint)
             return None
 
         except ImportError:
@@ -232,9 +223,7 @@ class CapAuthValidator:
             return None if self._require_auth else fingerprint
 
         except Exception as exc:
-            logger.error(
-                "CapAuth local: PGP verification error for %s: %s", fingerprint, exc
-            )
+            logger.error("CapAuth local: PGP verification error for %s: %s", fingerprint, exc)
             return None if self._require_auth else fingerprint
 
     def _load_public_key(self, fingerprint: str) -> "Optional[pgpy.PGPKey]":
@@ -251,22 +240,19 @@ class CapAuthValidator:
         Returns:
             A loaded :class:`pgpy.PGPKey`, or None if the key cannot be found.
         """
-        import pgpy  # type: ignore[import]
         from pathlib import Path
+
+        import pgpy  # type: ignore[import]
 
         # 1. SKComm local key store
         key_path = Path.home() / ".skcomm" / "keys" / f"{fingerprint}.asc"
         if key_path.exists():
             try:
                 key, _ = pgpy.PGPKey.from_file(str(key_path))
-                logger.debug(
-                    "CapAuth: loaded key for %s from %s", fingerprint, key_path
-                )
+                logger.debug("CapAuth: loaded key for %s from %s", fingerprint, key_path)
                 return key
             except Exception as exc:
-                logger.debug(
-                    "CapAuth: failed to parse key at %s: %s", key_path, exc
-                )
+                logger.debug("CapAuth: failed to parse key at %s: %s", key_path, exc)
 
         # 2. System GPG keyring
         try:
@@ -280,18 +266,12 @@ class CapAuthValidator:
             )
             if result.returncode == 0 and result.stdout.strip():
                 key, _ = pgpy.PGPKey.from_blob(result.stdout)
-                logger.debug(
-                    "CapAuth: loaded key for %s from system GPG keyring", fingerprint
-                )
+                logger.debug("CapAuth: loaded key for %s from system GPG keyring", fingerprint)
                 return key
         except FileNotFoundError:
-            logger.debug(
-                "CapAuth: gpg binary not found; skipping system keyring lookup"
-            )
+            logger.debug("CapAuth: gpg binary not found; skipping system keyring lookup")
         except Exception as exc:
-            logger.debug(
-                "CapAuth: GPG keyring lookup failed for %s: %s", fingerprint, exc
-            )
+            logger.debug("CapAuth: GPG keyring lookup failed for %s: %s", fingerprint, exc)
 
         return None
 
@@ -342,16 +322,12 @@ class CapAuthValidator:
 
             pub_key = self._load_public_key(fingerprint)
             if pub_key is None:
-                logger.warning(
-                    "verify_detached: public key not found for %s", fingerprint
-                )
+                logger.warning("verify_detached: public key not found for %s", fingerprint)
                 return False
 
             result = pub_key.verify(signed_payload, pgp_sig)
             if not bool(result):
-                logger.warning(
-                    "verify_detached: PGP signature INVALID for %s", fingerprint
-                )
+                logger.warning("verify_detached: PGP signature INVALID for %s", fingerprint)
                 return False
 
             logger.debug("verify_detached: PGP sig valid for %s", fingerprint)

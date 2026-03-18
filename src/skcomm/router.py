@@ -17,29 +17,28 @@ import time
 from collections import OrderedDict
 from typing import Optional
 
-from .models import MessageEnvelope, RoutingMode, Urgency
+from .models import MessageEnvelope, RoutingMode
 from .transport import (
     DeliveryReport,
     SendResult,
     Transport,
     TransportCategory,
     TransportError,
-    TransportStatus,
 )
 
 logger = logging.getLogger("skcomm.router")
 
 # Failure tracking defaults
-FAILURE_THRESHOLD = 3       # consecutive failures before cooldown
-COOLDOWN_SECONDS = 60.0     # seconds to skip a transport after repeated failures
+FAILURE_THRESHOLD = 3  # consecutive failures before cooldown
+COOLDOWN_SECONDS = 60.0  # seconds to skip a transport after repeated failures
 
 # Deduplication cache limit
 SEEN_IDS_MAX = 10_000
 
 # Retry queue
 RETRY_QUEUE_PATH = pathlib.Path.home() / ".skcapstone" / "retry_queue.jsonl"
-RETRY_BASE_DELAY = 1.0   # seconds before first retry (doubles each attempt)
-RETRY_MAX_DELAY = 60.0   # cap on per-attempt wait
+RETRY_BASE_DELAY = 1.0  # seconds before first retry (doubles each attempt)
+RETRY_MAX_DELAY = 60.0  # cap on per-attempt wait
 RETRY_MAX_ATTEMPTS = 10  # drop envelope after this many retry attempts
 
 
@@ -239,9 +238,7 @@ class Router:
             return False
         return (time.monotonic() - last_fail) < COOLDOWN_SECONDS
 
-    def _select_transports(
-        self, mode: RoutingMode, envelope: MessageEnvelope
-    ) -> list[Transport]:
+    def _select_transports(self, mode: RoutingMode, envelope: MessageEnvelope) -> list[Transport]:
         """Filter and sort transports for the given routing mode.
 
         Transports in failure cooldown are excluded from candidates.
@@ -254,8 +251,7 @@ class Router:
             Sorted list of eligible, available transports.
         """
         available = [
-            t for t in self._transports
-            if t.is_available() and not self._is_in_cooldown(t.name)
+            t for t in self._transports if t.is_available() and not self._is_in_cooldown(t.name)
         ]
 
         if mode == RoutingMode.STEALTH:
@@ -324,8 +320,7 @@ class Router:
         self._transport_failures[transport_name] = (new_count, now)
         if new_count == FAILURE_THRESHOLD:
             logger.warning(
-                "Transport '%s' hit %d consecutive failures — "
-                "entering %.0fs cooldown",
+                "Transport '%s' hit %d consecutive failures — entering %.0fs cooldown",
                 transport_name,
                 FAILURE_THRESHOLD,
                 COOLDOWN_SECONDS,
@@ -347,9 +342,7 @@ class Router:
         """
         self._transport_failures.pop(transport_name, None)
 
-    def _try_send(
-        self, transport: Transport, envelope_bytes: bytes, recipient: str
-    ) -> SendResult:
+    def _try_send(self, transport: Transport, envelope_bytes: bytes, recipient: str) -> SendResult:
         """Attempt to send through a single transport with error handling."""
         start = time.monotonic()
         try:
@@ -366,9 +359,7 @@ class Router:
             return result
         except TransportError as exc:
             elapsed = (time.monotonic() - start) * 1000
-            logger.warning(
-                "Transport '%s' TransportError: %s", transport.name, exc
-            )
+            logger.warning("Transport '%s' TransportError: %s", transport.name, exc)
             self._record_failure(transport.name)
             return SendResult(
                 success=False,
@@ -379,9 +370,7 @@ class Router:
             )
         except Exception as exc:
             elapsed = (time.monotonic() - start) * 1000
-            logger.warning(
-                "Transport '%s' failed: %s", transport.name, exc
-            )
+            logger.warning("Transport '%s' failed: %s", transport.name, exc)
             self._record_failure(transport.name)
             return SendResult(
                 success=False,
@@ -488,7 +477,7 @@ class Router:
                     # Delivered — don't re-add to survivors
                 else:
                     next_attempt = attempt + 1
-                    delay = min(RETRY_BASE_DELAY * (2 ** next_attempt), RETRY_MAX_DELAY)
+                    delay = min(RETRY_BASE_DELAY * (2**next_attempt), RETRY_MAX_DELAY)
                     entry["attempt"] = next_attempt
                     entry["next_retry_at"] = time.time() + delay
                     surviving.append(entry)
@@ -502,9 +491,7 @@ class Router:
 
             try:
                 if surviving:
-                    RETRY_QUEUE_PATH.write_text(
-                        "\n".join(json.dumps(e) for e in surviving) + "\n"
-                    )
+                    RETRY_QUEUE_PATH.write_text("\n".join(json.dumps(e) for e in surviving) + "\n")
                 else:
                     RETRY_QUEUE_PATH.write_text("")
             except OSError as exc:
@@ -513,8 +500,7 @@ class Router:
     def _retry_send(self, envelope_bytes: bytes, recipient: str, mode: RoutingMode) -> bool:
         """Try to deliver envelope bytes via available transports (failover order)."""
         available = [
-            t for t in self._transports
-            if t.is_available() and not self._is_in_cooldown(t.name)
+            t for t in self._transports if t.is_available() and not self._is_in_cooldown(t.name)
         ]
         if mode == RoutingMode.STEALTH:
             available = [t for t in available if t.category in self.STEALTH_CATEGORIES]

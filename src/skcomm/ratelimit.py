@@ -21,7 +21,7 @@ import logging
 import time
 from typing import Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 logger = logging.getLogger("skcomm.ratelimit")
 
@@ -43,7 +43,9 @@ class TokenBucket:
         refill_rate: Tokens added per second.
     """
 
-    def __init__(self, capacity: float = DEFAULT_CAPACITY, refill_rate: float = DEFAULT_REFILL_RATE):
+    def __init__(
+        self, capacity: float = DEFAULT_CAPACITY, refill_rate: float = DEFAULT_REFILL_RATE
+    ):
         self._capacity = capacity
         self._refill_rate = refill_rate
         self._tokens = capacity
@@ -224,7 +226,8 @@ class RateLimiter:
         """Get or create the transport-level bucket."""
         if transport not in self._transport_buckets:
             self._transport_buckets[transport] = TokenBucket(
-                config.transport_capacity, config.transport_refill,
+                config.transport_capacity,
+                config.transport_refill,
             )
         return self._transport_buckets[transport]
 
@@ -233,6 +236,7 @@ class RateLimiter:
         key = f"{transport}:{peer}"
         if key not in self._peer_buckets:
             self._peer_buckets[key] = TokenBucket(
-                config.peer_capacity, config.peer_refill,
+                config.peer_capacity,
+                config.peer_refill,
             )
         return self._peer_buckets[key]

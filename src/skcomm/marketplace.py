@@ -14,7 +14,6 @@ Usage:
 
 from __future__ import annotations
 
-import json
 import logging
 from datetime import datetime, timezone
 from pathlib import Path
@@ -226,8 +225,8 @@ def publish_skill(
         from .transports.nostr import (
             NOSTR_AVAILABLE,
             _make_event,
-            _publish_to_relay,
             _pubkey_of,
+            _publish_to_relay,
             _sign_event,
         )
     except ImportError:
@@ -265,7 +264,9 @@ def publish_skill(
         if _publish_to_relay(relay_url, event, timeout=timeout):
             logger.info(
                 "Published skill %s to %s (event %s)",
-                manifest.name, relay_url, event["id"][:12],
+                manifest.name,
+                relay_url,
+                event["id"][:12],
             )
             return event["id"]
 
@@ -343,7 +344,8 @@ def search_skills(
     query_lower = (query or "").lower()
     if query_lower:
         results = [
-            s for s in results
+            s
+            for s in results
             if query_lower in s.name.lower()
             or query_lower in s.title.lower()
             or query_lower in s.description.lower()

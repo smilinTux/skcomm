@@ -15,22 +15,17 @@ from __future__ import annotations
 import asyncio
 import json
 import os
-import queue
-import threading
-import time
 from concurrent.futures import Future
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from skcomm.transport import TransportCategory, TransportStatus
+from skcomm.transport import TransportStatus
 from skcomm.transports.webrtc import (
     DEFAULT_SIGNALING_URL,
     PeerConnection,
     WebRTCTransport,
-    create_transport,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -52,12 +47,14 @@ def _make_transport(**kwargs) -> WebRTCTransport:
 
 def _make_envelope_bytes(envelope_id="test-env-001", content="test") -> bytes:
     """Create minimal JSON envelope bytes."""
-    return json.dumps({
-        "envelope_id": envelope_id,
-        "sender": "opus",
-        "recipient": "lumina",
-        "payload": {"content": content},
-    }).encode()
+    return json.dumps(
+        {
+            "envelope_id": envelope_id,
+            "sender": "opus",
+            "recipient": "lumina",
+            "payload": {"content": content},
+        }
+    ).encode()
 
 
 # ---------------------------------------------------------------------------
@@ -370,7 +367,9 @@ class TestSignalingUrlEnvVar:
     def test_signaling_url_from_env_var(self):
         """Expected: SKCOMM_SIGNALING_URL env var overrides the default."""
         import importlib
+
         import skcomm.transports.webrtc as webrtc_mod
+
         custom_url = "wss://signal.custom.example.com/ws"
         try:
             with patch.dict(os.environ, {"SKCOMM_SIGNALING_URL": custom_url}):
@@ -385,7 +384,9 @@ class TestSignalingUrlEnvVar:
     def test_constructor_url_overrides_env(self):
         """Expected: explicit signaling_url parameter overrides env var."""
         import importlib
+
         import skcomm.transports.webrtc as webrtc_mod
+
         explicit_url = "ws://explicit:1234/ws"
         try:
             with patch.dict(os.environ, {"SKCOMM_SIGNALING_URL": "ws://from-env:9999/ws"}):
@@ -518,13 +519,15 @@ class TestConfigureIntegration:
 
     def test_configure_multiple_fields_at_once(self, transport):
         """Expected: configure() updates multiple fields atomically."""
-        transport.configure({
-            "signaling_url": "ws://bulk:9999/ws",
-            "agent_name": "jarvis",
-            "token": "new-token",
-            "priority": 7,
-            "turn_secret": "my-secret",
-        })
+        transport.configure(
+            {
+                "signaling_url": "ws://bulk:9999/ws",
+                "agent_name": "jarvis",
+                "token": "new-token",
+                "priority": 7,
+                "turn_secret": "my-secret",
+            }
+        )
         assert transport._signaling_url == "ws://bulk:9999/ws"
         assert transport._agent_name == "jarvis"
         assert transport._token == "new-token"

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -86,9 +85,7 @@ class TestSendCommand:
         mock_report = MagicMock()
         mock_report.delivered = True
         mock_report.successful_transport = "file"
-        mock_report.attempts = [
-            MagicMock(success=True, transport_name="file", latency_ms=1.5)
-        ]
+        mock_report.attempts = [MagicMock(success=True, transport_name="file", latency_ms=1.5)]
 
         mock_comm = MagicMock()
         mock_comm.send.return_value = mock_report
@@ -102,9 +99,7 @@ class TestSendCommand:
         mock_report = MagicMock()
         mock_report.delivered = False
         mock_report.attempts = [
-            MagicMock(
-                success=False, transport_name="file", error="Connection refused"
-            )
+            MagicMock(success=False, transport_name="file", error="Connection refused")
         ]
 
         mock_comm = MagicMock()
@@ -118,17 +113,13 @@ class TestSendCommand:
         mock_report = MagicMock()
         mock_report.delivered = True
         mock_report.successful_transport = "file"
-        mock_report.attempts = [
-            MagicMock(success=True, transport_name="file", latency_ms=2.0)
-        ]
+        mock_report.attempts = [MagicMock(success=True, transport_name="file", latency_ms=2.0)]
 
         mock_comm = MagicMock()
         mock_comm.send.return_value = mock_report
 
         with patch("skcomm.core.SKComm.from_config", return_value=mock_comm):
-            result = runner.invoke(
-                main, ["send", "lumina", "urgent msg", "-u", "critical"]
-            )
+            result = runner.invoke(main, ["send", "lumina", "urgent msg", "-u", "critical"])
             assert result.exit_code == 0
 
 
@@ -198,6 +189,7 @@ class TestPeerGroup:
     def test_peer_add_syncthing(self, runner, tmp_path):
         """Expected: peer add stores a syncthing peer."""
         from skcomm.discovery import PeerStore
+
         original_init = PeerStore.__init__
 
         def patched_init(self, peers_dir=None):
@@ -206,7 +198,14 @@ class TestPeerGroup:
         with patch.object(PeerStore, "__init__", patched_init):
             result = runner.invoke(
                 main,
-                ["peer", "add", "lumina", "/home/user/.skcapstone/comms", "--transport", "syncthing"],
+                [
+                    "peer",
+                    "add",
+                    "lumina",
+                    "/home/user/.skcapstone/comms",
+                    "--transport",
+                    "syncthing",
+                ],
             )
             assert result.exit_code == 0
             assert "lumina" in result.output
@@ -215,6 +214,7 @@ class TestPeerGroup:
     def test_peer_add_file_transport(self, runner, tmp_path):
         """Expected: peer add with file transport stores address."""
         from skcomm.discovery import PeerStore
+
         original_init = PeerStore.__init__
 
         def patched_init(self, peers_dir=None):
@@ -231,6 +231,7 @@ class TestPeerGroup:
     def test_peer_list_empty(self, runner, tmp_path):
         """Expected: peer list shows empty message when no peers."""
         from skcomm.discovery import PeerStore
+
         original_init = PeerStore.__init__
 
         def patched_init(self, peers_dir=None):
@@ -244,6 +245,7 @@ class TestPeerGroup:
     def test_peer_list_shows_added_peer(self, runner, tmp_path):
         """Expected: peer list displays peers after adding them."""
         from skcomm.discovery import PeerStore
+
         original_init = PeerStore.__init__
 
         def patched_init(self, peers_dir=None):
@@ -261,6 +263,7 @@ class TestPeerGroup:
     def test_peer_remove_nonexistent(self, runner, tmp_path):
         """Edge case: peer remove of missing peer shows warning."""
         from skcomm.discovery import PeerStore
+
         original_init = PeerStore.__init__
 
         def patched_init(self, peers_dir=None):
@@ -274,6 +277,7 @@ class TestPeerGroup:
     def test_peer_add_with_fingerprint(self, runner, tmp_path):
         """Expected: peer add stores optional fingerprint."""
         from skcomm.discovery import PeerStore
+
         original_init = PeerStore.__init__
 
         def patched_init(self, peers_dir=None):

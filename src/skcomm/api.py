@@ -23,8 +23,8 @@ from typing import Optional
 
 from fastapi import FastAPI, HTTPException, WebSocket, status
 from fastapi.middleware.cors import CORSMiddleware
-from starlette.middleware.base import BaseHTTPMiddleware
 from pydantic import BaseModel, Field
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from .capauth_validator import CapAuthValidator
 from .core import SKComm
@@ -78,7 +78,7 @@ async def lifespan(app: FastAPI):
             _skcomm.identity,
             len(_skcomm.router.transports),
         )
-    except Exception as exc:
+    except Exception:
         logger.exception("Failed to initialize SKComm")
         raise
 
@@ -206,8 +206,8 @@ _PEER_NAME_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$")
 # Allows: scheme://..., hostname:port, plain hostnames/paths.
 _TRANSPORT_URI_RE = re.compile(
     r"^[a-zA-Z][a-zA-Z0-9+\-.]*://.{1,2000}$"  # URI with scheme
-    r"|^[a-zA-Z0-9._-]{1,253}:[0-9]{1,5}$"      # hostname:port
-    r"|^/[^\x00]{0,4095}$"                        # absolute path (no NUL)
+    r"|^[a-zA-Z0-9._-]{1,253}:[0-9]{1,5}$"  # hostname:port
+    r"|^/[^\x00]{0,4095}$"  # absolute path (no NUL)
 )
 # Path traversal sequences to reject in any transport address.
 _PATH_TRAVERSAL_RE = re.compile(r"\.\.[/\\]|[/\\]\.\.$|^\.\.$")
@@ -435,6 +435,7 @@ async def root():
 #   - send_notification  →  notify-send desktop notification
 # ---------------------------------------------------------------------------
 
+
 class _MCPToolCallRequest(BaseModel):
     tool: str
     arguments: dict = Field(default_factory=dict)
@@ -465,7 +466,11 @@ async def mcp_tool_call(req: _MCPToolCallRequest):
             raise HTTPException(status_code=400, detail="body is required")
 
         proc = await _asyncio.create_subprocess_exec(
-            "notify-send", "--urgency", urgency, title, body,
+            "notify-send",
+            "--urgency",
+            urgency,
+            title,
+            body,
             stdout=_asyncio.subprocess.DEVNULL,
             stderr=_asyncio.subprocess.PIPE,
         )
@@ -620,12 +625,14 @@ async def get_conversations():
         all_entries = []
 
     # Group envelopes by thread_id, falling back to "sender:recipient"
-    threads: dict[str, dict] = defaultdict(lambda: {
-        "participants": set(),
-        "count": 0,
-        "last_at": None,
-        "preview": "",
-    })
+    threads: dict[str, dict] = defaultdict(
+        lambda: {
+            "participants": set(),
+            "count": 0,
+            "last_at": None,
+            "preview": "",
+        }
+    )
 
     for entry in all_entries:
         try:
@@ -642,9 +649,7 @@ async def get_conversations():
             continue
 
     # ── Source 2: Syncthing comms folders (delivered messages) ────────
-    skcapstone_home = Path(
-        _os.environ.get("SKCAPSTONE_HOME", Path.home() / ".skcapstone")
-    )
+    skcapstone_home = Path(_os.environ.get("SKCAPSTONE_HOME", Path.home() / ".skcapstone"))
     comms_dirs = [
         skcapstone_home / "sync" / "comms" / "outbox",
         skcapstone_home / "sync" / "comms" / "inbox",
@@ -769,7 +774,9 @@ class ChatMessageItem(BaseModel):
     delivery_status: str = "delivered"
     timestamp: datetime
     encrypted: bool = False
-    source: str = Field(default="history", description="Storage source: history | outbox | syncthing")
+    source: str = Field(
+        default="history", description="Storage source: history | outbox | syncthing"
+    )
 
 
 class ConversationMessagesResponse(BaseModel):
@@ -841,31 +848,31 @@ async def get_conversation(
                 continue
             seen_ids.add(env.envelope_id)
             participants.update([env.sender, env.recipient])
-            matched.append((
-                env.metadata.created_at,
-                MessageEnvelopeResponse(
-                    envelope_id=env.envelope_id,
-                    sender=env.sender,
-                    recipient=env.recipient,
-                    content=env.payload.content,
-                    content_type=env.payload.content_type,
-                    encrypted=env.payload.encrypted,
-                    compressed=env.payload.compressed,
-                    signature=env.payload.signature,
-                    thread_id=env.metadata.thread_id,
-                    in_reply_to=env.metadata.in_reply_to,
-                    urgency=env.metadata.urgency,
-                    created_at=env.metadata.created_at,
-                    is_ack=env.is_ack,
-                ),
-            ))
+            matched.append(
+                (
+                    env.metadata.created_at,
+                    MessageEnvelopeResponse(
+                        envelope_id=env.envelope_id,
+                        sender=env.sender,
+                        recipient=env.recipient,
+                        content=env.payload.content,
+                        content_type=env.payload.content_type,
+                        encrypted=env.payload.encrypted,
+                        compressed=env.payload.compressed,
+                        signature=env.payload.signature,
+                        thread_id=env.metadata.thread_id,
+                        in_reply_to=env.metadata.in_reply_to,
+                        urgency=env.metadata.urgency,
+                        created_at=env.metadata.created_at,
+                        is_ack=env.is_ack,
+                    ),
+                )
+            )
         except Exception:
             continue
 
     # ── Source 2: Syncthing comms folders ─────────────────────────────
-    skcapstone_home = Path(
-        _os.environ.get("SKCAPSTONE_HOME", Path.home() / ".skcapstone")
-    )
+    skcapstone_home = Path(_os.environ.get("SKCAPSTONE_HOME", Path.home() / ".skcapstone"))
     comms_dirs = [
         skcapstone_home / "sync" / "comms" / "outbox",
         skcapstone_home / "sync" / "comms" / "inbox",
@@ -901,24 +908,26 @@ async def get_conversation(
                         except (ValueError, TypeError):
                             pass
                     participants.update([sender, recipient])
-                    matched.append((
-                        ts,
-                        MessageEnvelopeResponse(
-                            envelope_id=eid,
-                            sender=sender,
-                            recipient=recipient,
-                            content=payload.get("content", ""),
-                            content_type=payload.get("content_type", "text"),
-                            encrypted=payload.get("encrypted", False),
-                            compressed=payload.get("compressed", False),
-                            signature=payload.get("signature"),
-                            thread_id=thread_id,
-                            in_reply_to=meta.get("in_reply_to"),
-                            urgency=meta.get("urgency", "normal"),
-                            created_at=ts,
-                            is_ack=raw.get("is_ack", False),
-                        ),
-                    ))
+                    matched.append(
+                        (
+                            ts,
+                            MessageEnvelopeResponse(
+                                envelope_id=eid,
+                                sender=sender,
+                                recipient=recipient,
+                                content=payload.get("content", ""),
+                                content_type=payload.get("content_type", "text"),
+                                encrypted=payload.get("encrypted", False),
+                                compressed=payload.get("compressed", False),
+                                signature=payload.get("signature"),
+                                thread_id=thread_id,
+                                in_reply_to=meta.get("in_reply_to"),
+                                urgency=meta.get("urgency", "normal"),
+                                created_at=ts,
+                                is_ack=raw.get("is_ack", False),
+                            ),
+                        )
+                    )
                 except Exception:
                     continue
 
@@ -1012,22 +1021,24 @@ async def get_conversation_messages(
                         ts = ts_raw
                 if ts.tzinfo is None:
                     ts = ts.replace(tzinfo=timezone.utc)
-                items.append((
-                    ts,
-                    ChatMessageItem(
-                        id=msg_id,
-                        sender=sender,
-                        recipient=recipient,
-                        content=m.get("content", ""),
-                        content_type=m.get("content_type") or "text/plain",
-                        thread_id=m.get("thread_id"),
-                        reply_to=m.get("reply_to"),
-                        delivery_status=m.get("delivery_status") or "delivered",
-                        timestamp=ts,
-                        encrypted=False,
-                        source="history",
-                    ),
-                ))
+                items.append(
+                    (
+                        ts,
+                        ChatMessageItem(
+                            id=msg_id,
+                            sender=sender,
+                            recipient=recipient,
+                            content=m.get("content", ""),
+                            content_type=m.get("content_type") or "text/plain",
+                            thread_id=m.get("thread_id"),
+                            reply_to=m.get("reply_to"),
+                            delivery_status=m.get("delivery_status") or "delivered",
+                            timestamp=ts,
+                            encrypted=False,
+                            source="history",
+                        ),
+                    )
+                )
         except Exception as exc:
             logger.warning("ChatHistory lookup failed for %s: %s", conversation_id, exc)
 
@@ -1052,29 +1063,29 @@ async def get_conversation_messages(
             ts = env.metadata.created_at
             if ts.tzinfo is None:
                 ts = ts.replace(tzinfo=timezone.utc)
-            items.append((
-                ts,
-                ChatMessageItem(
-                    id=env.envelope_id,
-                    sender=env.sender,
-                    recipient=env.recipient,
-                    content=env.payload.content,
-                    content_type=str(env.payload.content_type),
-                    thread_id=env.metadata.thread_id,
-                    reply_to=env.metadata.in_reply_to,
-                    delivery_status="pending",
-                    timestamp=ts,
-                    encrypted=env.payload.encrypted,
-                    source="outbox",
-                ),
-            ))
+            items.append(
+                (
+                    ts,
+                    ChatMessageItem(
+                        id=env.envelope_id,
+                        sender=env.sender,
+                        recipient=env.recipient,
+                        content=env.payload.content,
+                        content_type=str(env.payload.content_type),
+                        thread_id=env.metadata.thread_id,
+                        reply_to=env.metadata.in_reply_to,
+                        delivery_status="pending",
+                        timestamp=ts,
+                        encrypted=env.payload.encrypted,
+                        source="outbox",
+                    ),
+                )
+            )
         except Exception:
             continue
 
     # ── Source 3: Syncthing comms folders (.skc.json files) ───────────
-    skcapstone_home = Path(
-        _os.environ.get("SKCAPSTONE_HOME", Path.home() / ".skcapstone")
-    )
+    skcapstone_home = Path(_os.environ.get("SKCAPSTONE_HOME", Path.home() / ".skcapstone"))
     comms_dirs = [
         skcapstone_home / "sync" / "comms" / "outbox",
         skcapstone_home / "sync" / "comms" / "inbox",
@@ -1115,29 +1126,31 @@ async def get_conversation_messages(
                     if ts.tzinfo is None:
                         ts = ts.replace(tzinfo=timezone.utc)
                     participants.update([sender, recipient])
-                    items.append((
-                        ts,
-                        ChatMessageItem(
-                            id=eid or "",
-                            sender=sender,
-                            recipient=recipient,
-                            content=payload.get("content", ""),
-                            content_type=payload.get("content_type") or "text/plain",
-                            thread_id=thread_id,
-                            reply_to=meta.get("in_reply_to"),
-                            delivery_status="delivered",
-                            timestamp=ts,
-                            encrypted=payload.get("encrypted", False),
-                            source="syncthing",
-                        ),
-                    ))
+                    items.append(
+                        (
+                            ts,
+                            ChatMessageItem(
+                                id=eid or "",
+                                sender=sender,
+                                recipient=recipient,
+                                content=payload.get("content", ""),
+                                content_type=payload.get("content_type") or "text/plain",
+                                thread_id=thread_id,
+                                reply_to=meta.get("in_reply_to"),
+                                delivery_status="delivered",
+                                timestamp=ts,
+                                encrypted=payload.get("encrypted", False),
+                                source="syncthing",
+                            ),
+                        )
+                    )
                 except Exception:
                     continue
 
     # Sort oldest-first, then paginate.
     items.sort(key=lambda x: x[0])
     total = len(items)
-    page = items[offset: offset + limit]
+    page = items[offset : offset + limit]
 
     return ConversationMessagesResponse(
         conversation_id=conversation_id,
@@ -1256,9 +1269,7 @@ async def add_peer(request: PeerAddRequest):
         peer = PeerInfo(
             name=request.name,
             fingerprint=request.fingerprint,
-            transports=[
-                PeerTransport(transport=request.transport, settings=transport_settings)
-            ],
+            transports=[PeerTransport(transport=request.transport, settings=transport_settings)],
             discovered_via="manual",
         )
 
@@ -1332,6 +1343,7 @@ def _get_broker() -> SignalingBroker:
     global _broker
     if _broker is None:
         import os as _os
+
         dev_auth_val = _os.environ.get("SKCOMM_DEV_AUTH", "").lower()
         dev_auth = dev_auth_val in {"1", "true", "yes", "i_know_what_im_doing"}
         _broker = SignalingBroker(validator=CapAuthValidator(require_auth=not dev_auth))
@@ -1389,8 +1401,7 @@ async def get_ice_config():
 
     if not turn_secret:
         logger.warning(
-            "SKCOMM_TURN_SECRET not set — TURN relay disabled, "
-            "WebRTC may fail behind NAT"
+            "SKCOMM_TURN_SECRET not set — TURN relay disabled, WebRTC may fail behind NAT"
         )
 
     if turn_secret:
@@ -1404,17 +1415,16 @@ async def get_ice_config():
                 digestmod=hashlib.sha1,
             ).digest()
         ).decode()
-        turn_servers.append({
-            "urls": turn_url,
-            "username": username,
-            "credential": credential,
-        })
+        turn_servers.append(
+            {
+                "urls": turn_url,
+                "username": username,
+                "credential": credential,
+            }
+        )
 
     return {
-        "ice_servers": (
-            [{"urls": s} for s in stun_servers]
-            + turn_servers
-        ),
+        "ice_servers": ([{"urls": s} for s in stun_servers] + turn_servers),
         "expires_in": 86400,
     }
 
@@ -1448,13 +1458,20 @@ async def get_webrtc_peers(room: Optional[str] = None):
 
 try:
     from skcapstone.snapshots import (
-        OOFState as _OOFState,
         ConversationMessage as _ConversationMessage,
+    )
+    from skcapstone.snapshots import (
+        OOFState as _OOFState,
+    )
+    from skcapstone.snapshots import (
         PersonalityTraits as _PersonalityTraits,
-        SoulSnapshot,
+    )
+    from skcapstone.snapshots import (
         SnapshotIndex,
         SnapshotStore,
+        SoulSnapshot,
     )
+
     _SNAPSHOTS_AVAILABLE = True
 except ImportError:
     _SNAPSHOTS_AVAILABLE = False
@@ -1861,11 +1878,13 @@ async def update_presence(request: PresenceRequest):
                     message_type=MessageType.HEARTBEAT,
                     urgency=Urgency.LOW,
                 )
-                peer_results.append({
-                    "peer": peer.name,
-                    "delivered": report.delivered,
-                    "transport": report.successful_transport if report.delivered else None,
-                })
+                peer_results.append(
+                    {
+                        "peer": peer.name,
+                        "delivered": report.delivered,
+                        "transport": report.successful_transport if report.delivered else None,
+                    }
+                )
             except Exception as exc:
                 peer_errors.append({"peer": peer.name, "error": str(exc)})
     except Exception as exc:

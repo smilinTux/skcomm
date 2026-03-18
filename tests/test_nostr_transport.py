@@ -16,9 +16,7 @@ import pytest
 from skcomm.transport import TransportCategory, TransportStatus
 from skcomm.transports.nostr import (
     DEFAULT_RELAYS,
-    KIND_DM,
     KIND_GIFT_WRAP,
-    KIND_SEAL,
     NOSTR_AVAILABLE,
     NostrTransport,
     _make_event,
@@ -32,7 +30,6 @@ from skcomm.transports.nostr import (
     unwrap_dm,
     wrap_dm,
 )
-
 
 pytestmark = pytest.mark.skipif(
     not NOSTR_AVAILABLE,
@@ -55,13 +52,15 @@ def recipient_secret() -> bytes:
 @pytest.fixture
 def sample_envelope() -> bytes:
     """A minimal SKComm envelope as bytes."""
-    return json.dumps({
-        "skcomm_version": "1.0.0",
-        "envelope_id": "test-envelope-123",
-        "sender": "jarvis",
-        "recipient": "lumina",
-        "payload": {"content": "Hello from Nostr!", "content_type": "text"},
-    }).encode("utf-8")
+    return json.dumps(
+        {
+            "skcomm_version": "1.0.0",
+            "envelope_id": "test-envelope-123",
+            "sender": "jarvis",
+            "recipient": "lumina",
+            "payload": {"content": "Hello from Nostr!", "content_type": "text"},
+        }
+    ).encode("utf-8")
 
 
 # ═══════════════════════════════════════════════════════════
@@ -194,7 +193,9 @@ class TestGiftWrap:
         gift = wrap_dm(sender_secret, sx.hex(), rx.hex(), "test")
         assert gift["pubkey"] != sx.hex()
 
-    def test_unwrap_with_wrong_key_returns_none(self, sender_secret: bytes, recipient_secret: bytes):
+    def test_unwrap_with_wrong_key_returns_none(
+        self, sender_secret: bytes, recipient_secret: bytes
+    ):
         """Unwrapping with wrong key returns None."""
         sx, _ = _pubkey_of(sender_secret)
         rx, _ = _pubkey_of(recipient_secret)
@@ -375,6 +376,7 @@ class TestHealthCheck:
             if "bad" in url:
                 raise ConnectionError("down")
             from unittest.mock import MagicMock
+
             return MagicMock()
 
         with patch("skcomm.transports.nostr._ws_connect", side_effect=side_effect):

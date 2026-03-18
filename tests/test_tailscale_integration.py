@@ -13,25 +13,21 @@ All tests use unittest.mock — no actual Tailscale installation required.
 from __future__ import annotations
 
 import json
-import socket
 import struct
 import threading
 import time
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 from skcomm.transport import TransportCategory, TransportStatus
 from skcomm.transports.tailscale import (
-    ACCEPT_TIMEOUT,
     CONNECT_TIMEOUT,
     HEADER_SIZE,
     LISTEN_PORT,
     MAX_MESSAGE_SIZE,
     TailscaleTransport,
-    create_transport,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -44,12 +40,14 @@ PEER_NAME = "lumina"
 
 def _make_envelope_bytes(envelope_id="ts-env-001", content="test") -> bytes:
     """Create minimal JSON envelope bytes."""
-    return json.dumps({
-        "envelope_id": envelope_id,
-        "sender": "opus",
-        "recipient": "lumina",
-        "payload": {"content": content},
-    }).encode()
+    return json.dumps(
+        {
+            "envelope_id": envelope_id,
+            "sender": "opus",
+            "recipient": "lumina",
+            "payload": {"content": content},
+        }
+    ).encode()
 
 
 def _mock_tailscale_ip(ip=LOCAL_IP):
@@ -140,28 +138,34 @@ class TestInstantiationAndConfigure:
     def test_configure_restarts_if_was_running(self, transport):
         """Expected: configure() restarts the listener if it was running."""
         transport._running = True
-        with patch.object(transport, "stop") as mock_stop, \
-             patch.object(transport, "start") as mock_start, \
-             patch("subprocess.run", return_value=_mock_tailscale_ip()):
+        with (
+            patch.object(transport, "stop") as mock_stop,
+            patch.object(transport, "start") as mock_start,
+            patch("subprocess.run", return_value=_mock_tailscale_ip()),
+        ):
             transport.configure({"listen_port": 19001})
         mock_stop.assert_called_once()
         mock_start.assert_called_once()
 
     def test_configure_does_not_start_if_was_stopped(self, transport):
         """Expected: configure() does not start listener if it was not running."""
-        with patch.object(transport, "start") as mock_start, \
-             patch("subprocess.run", return_value=_mock_tailscale_ip()):
+        with (
+            patch.object(transport, "start") as mock_start,
+            patch("subprocess.run", return_value=_mock_tailscale_ip()),
+        ):
             transport.configure({"listen_port": 19002})
         mock_start.assert_not_called()
 
     def test_configure_multiple_fields_at_once(self, transport):
         """Expected: configure() updates multiple fields in one call."""
         with patch("subprocess.run", return_value=_mock_tailscale_ip()):
-            transport.configure({
-                "listen_port": 12345,
-                "priority": 8,
-                "auto_detect": True,
-            })
+            transport.configure(
+                {
+                    "listen_port": 12345,
+                    "priority": 8,
+                    "auto_detect": True,
+                }
+            )
         assert transport._listen_port == 12345
         assert transport.priority == 8
         assert transport._auto_detect is True
@@ -314,7 +318,6 @@ class TestTcpFramingEncodeDecode:
 
     def test_frame_header_is_big_endian(self):
         """Expected: header uses big-endian byte order (network byte order)."""
-        data = b"x" * 300  # 300 bytes
         expected_header = struct.pack(">I", 300)
         # Verify it is NOT little-endian
         assert expected_header == b"\x00\x00\x01\x2c"
@@ -329,7 +332,7 @@ class TestTcpFramingEncodeDecode:
         # Decode: extract header, then payload
         header = framed[:HEADER_SIZE]
         msg_len = struct.unpack(">I", header)[0]
-        payload = framed[HEADER_SIZE:HEADER_SIZE + msg_len]
+        payload = framed[HEADER_SIZE : HEADER_SIZE + msg_len]
 
         assert payload == original
         assert msg_len == len(original)
@@ -462,10 +465,7 @@ class TestConcurrentStartCalls:
 
         # Create the caller threads BEFORE patching threading.Thread,
         # so the callers themselves are real threads.
-        caller_threads = [
-            original_thread_cls(target=try_start, daemon=True)
-            for _ in range(5)
-        ]
+        caller_threads = [original_thread_cls(target=try_start, daemon=True) for _ in range(5)]
 
         with patch(
             "skcomm.transports.tailscale.threading.Thread",
@@ -540,7 +540,10 @@ class TestHealthCheckIntegration:
             health = transport_no_ts.health_check()
         assert health.status == TransportStatus.UNAVAILABLE
         assert health.transport_name == "tailscale"
-        assert "not running" in (health.error or "").lower() or "not installed" in (health.error or "").lower()
+        assert (
+            "not running" in (health.error or "").lower()
+            or "not installed" in (health.error or "").lower()
+        )
         assert "listen_port" in health.details
 
     def test_health_degraded_when_not_started(self, transport):

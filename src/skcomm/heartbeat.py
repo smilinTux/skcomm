@@ -26,7 +26,6 @@ import json
 import logging
 import subprocess
 import threading
-import time
 from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
@@ -226,14 +225,14 @@ def _collect_resources(sync_root: Path) -> NodeResources:
 
         cpu_pct = psutil.cpu_percent(interval=0.1)
         vm = psutil.virtual_memory()
-        ram_total = round(vm.total / (1024 ** 3), 2)
-        ram_used = round(vm.used / (1024 ** 3), 2)
+        ram_total = round(vm.total / (1024**3), 2)
+        ram_used = round(vm.used / (1024**3), 2)
 
         try:
             target = sync_root.expanduser()
             target.mkdir(parents=True, exist_ok=True)
             du = psutil.disk_usage(str(target))
-            disk_free = round(du.free / (1024 ** 3), 2)
+            disk_free = round(du.free / (1024**3), 2)
         except OSError:
             pass
 
@@ -392,7 +391,9 @@ class HeartbeatPublisher:
 
         self._thread = threading.Thread(target=_loop, daemon=True, name="heartbeat-publisher")
         self._thread.start()
-        logger.info("HeartbeatPublisher started (interval=%ds)", self._cfg.publish_interval_seconds)
+        logger.info(
+            "HeartbeatPublisher started (interval=%ds)", self._cfg.publish_interval_seconds
+        )
 
     def stop(self) -> None:
         """Stop the background publish thread gracefully."""
@@ -492,8 +493,7 @@ class NodeHeartbeatMonitor:
         """
         cap_lower = capability.lower()
         return [
-            hb for hb in self.discover_nodes()
-            if cap_lower in [c.lower() for c in hb.capabilities]
+            hb for hb in self.discover_nodes() if cap_lower in [c.lower() for c in hb.capabilities]
         ]
 
     def all_nodes(self) -> list[NodeHeartbeat]:
@@ -645,19 +645,24 @@ class HeartbeatMonitor:
             try:
                 payload = HeartbeatPayload.model_validate_json(path.read_text())
                 age = (now - payload.timestamp).total_seconds()
-                results.append(PeerHeartbeat(
-                    name=peer_name,
-                    status=self._classify(age),
-                    last_heartbeat=payload.timestamp,
-                    age_seconds=round(age, 1),
-                    transports=payload.transports,
-                    fingerprint=payload.fingerprint,
-                ))
+                results.append(
+                    PeerHeartbeat(
+                        name=peer_name,
+                        status=self._classify(age),
+                        last_heartbeat=payload.timestamp,
+                        age_seconds=round(age, 1),
+                        transports=payload.transports,
+                        fingerprint=payload.fingerprint,
+                    )
+                )
             except Exception as exc:
                 logger.warning("Invalid heartbeat file %s: %s", path.name, exc)
-                results.append(PeerHeartbeat(
-                    name=peer_name, status=PeerLiveness.UNKNOWN,
-                ))
+                results.append(
+                    PeerHeartbeat(
+                        name=peer_name,
+                        status=PeerLiveness.UNKNOWN,
+                    )
+                )
 
         return results
 

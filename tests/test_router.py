@@ -2,8 +2,6 @@
 
 import json
 
-import pytest
-
 from skcomm.models import (
     MessageEnvelope,
     MessagePayload,
@@ -167,15 +165,9 @@ class TestRouterStealth:
 
     def test_stealth_filters_to_stealth_only(self):
         """Expected: only file_based and stealth transports used."""
-        t_file = MockTransport(
-            name="file", priority=1, category=TransportCategory.FILE_BASED
-        )
-        t_tcp = MockTransport(
-            name="tcp", priority=2, category=TransportCategory.REALTIME
-        )
-        t_stealth = MockTransport(
-            name="dns", priority=3, category=TransportCategory.STEALTH
-        )
+        t_file = MockTransport(name="file", priority=1, category=TransportCategory.FILE_BASED)
+        t_tcp = MockTransport(name="tcp", priority=2, category=TransportCategory.REALTIME)
+        t_stealth = MockTransport(name="dns", priority=3, category=TransportCategory.STEALTH)
         router = Router(transports=[t_file, t_tcp, t_stealth])
 
         envelope = MessageEnvelope(
@@ -196,12 +188,8 @@ class TestRouterSpeed:
 
     def test_speed_filters_to_realtime_only(self):
         """Expected: only realtime transports used in speed mode."""
-        t_file = MockTransport(
-            name="file", priority=1, category=TransportCategory.FILE_BASED
-        )
-        t_tcp = MockTransport(
-            name="tcp", priority=2, category=TransportCategory.REALTIME
-        )
+        t_file = MockTransport(name="file", priority=1, category=TransportCategory.FILE_BASED)
+        t_tcp = MockTransport(name="tcp", priority=2, category=TransportCategory.REALTIME)
         router = Router(transports=[t_file, t_tcp])
 
         envelope = MessageEnvelope(

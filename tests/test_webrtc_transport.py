@@ -4,10 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-import queue
-import threading
 import time
-from concurrent.futures import Future
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -17,15 +14,11 @@ pytest.importorskip("aiortc")
 from skcomm.models import MessageEnvelope, MessagePayload
 from skcomm.transport import TransportCategory, TransportStatus
 from skcomm.transports.webrtc import (
-    CONNECT_SETTLE,
     DEFAULT_SIGNALING_URL,
-    ICE_GATHER_TIMEOUT,
     PeerConnection,
-    SEND_TIMEOUT,
     WebRTCTransport,
     create_transport,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -559,7 +552,7 @@ class TestScheduleOffer:
     def test_schedule_offer_installs_stub_peer(self, running_transport):
         """Expected: _schedule_offer creates a negotiating stub peer before dispatching."""
         t = running_transport
-        with patch("asyncio.run_coroutine_threadsafe") as mock_dispatch:
+        with patch("asyncio.run_coroutine_threadsafe"):
             t._schedule_offer(PEER_FP)
 
         with t._peers_lock:
@@ -693,11 +686,13 @@ class TestHandleSignal:
         """Expected: 'signal' message dispatches to _handle_incoming_signal."""
         t = connected_transport
         with patch.object(t, "_handle_incoming_signal", new_callable=AsyncMock) as mock_handler:
-            await t._handle_signal({
-                "type": "signal",
-                "from": PEER_FP,
-                "data": {"sdp": {}},
-            })
+            await t._handle_signal(
+                {
+                    "type": "signal",
+                    "from": PEER_FP,
+                    "data": {"sdp": {}},
+                }
+            )
         mock_handler.assert_called_once_with(PEER_FP, {"sdp": {}})
 
     @pytest.mark.asyncio
@@ -807,6 +802,7 @@ class TestWireChannel:
             def decorator(fn):
                 registered_handlers[event] = fn
                 return fn
+
             return decorator
 
         mock_channel.on = on_handler
@@ -826,6 +822,7 @@ class TestWireChannel:
             def decorator(fn):
                 registered_handlers[event] = fn
                 return fn
+
             return decorator
 
         mock_channel.on = on_handler
@@ -845,6 +842,7 @@ class TestWireChannel:
             def decorator(fn):
                 registered_handlers[event] = fn
                 return fn
+
             return decorator
 
         mock_channel.on = on_handler

@@ -94,7 +94,8 @@ class PeerInfo(BaseModel):
             else:
                 merged_settings = {**existing_transports[t.transport].settings, **t.settings}
                 existing_transports[t.transport] = PeerTransport(
-                    transport=t.transport, settings=merged_settings,
+                    transport=t.transport,
+                    settings=merged_settings,
                 )
 
         return PeerInfo(
@@ -216,9 +217,7 @@ class PeerStore:
             raise ValueError(f"Peer name '{name}' is empty after sanitization")
         result = (self._dir / f"{safe_name}.yml").resolve()
         if not str(result).startswith(str(self._dir.resolve())):
-            raise ValueError(
-                f"Peer name '{name}' resolves outside peers directory"
-            )
+            raise ValueError(f"Peer name '{name}' resolves outside peers directory")
         return result
 
 
@@ -241,7 +240,7 @@ def discover_syncthing(comms_root: Optional[Path] = None) -> list[PeerInfo]:
     """
     root = comms_root or Path("~/.skcapstone/comms").expanduser()
     peers: dict[str, PeerInfo] = {}
-    now = datetime.now(timezone.utc)
+    datetime.now(timezone.utc)
 
     for subdir in ["inbox", "outbox"]:
         base = root / subdir
@@ -255,10 +254,12 @@ def discover_syncthing(comms_root: Optional[Path] = None) -> list[PeerInfo]:
                 peers[name] = PeerInfo(
                     name=name,
                     discovered_via="syncthing",
-                    transports=[PeerTransport(
-                        transport="syncthing",
-                        settings={"comms_root": str(root)},
-                    )],
+                    transports=[
+                        PeerTransport(
+                            transport="syncthing",
+                            settings={"comms_root": str(root)},
+                        )
+                    ],
                 )
 
             last_seen = _newest_envelope_time(peer_dir)
@@ -350,16 +351,16 @@ def discover_mdns(timeout: float = 3.0) -> list[PeerInfo]:
                 nostr_pubkey=props.get("nostr_pubkey"),
                 discovered_via="mdns",
                 last_seen=datetime.now(timezone.utc),
-                transports=[PeerTransport(
-                    transport="mdns",
-                    settings={
-                        "host": str(info.server),
-                        "port": info.port,
-                        "addresses": [
-                            addr for addr in (info.parsed_addresses() or [])
-                        ],
-                    },
-                )],
+                transports=[
+                    PeerTransport(
+                        transport="mdns",
+                        settings={
+                            "host": str(info.server),
+                            "port": info.port,
+                            "addresses": [addr for addr in (info.parsed_addresses() or [])],
+                        },
+                    )
+                ],
             )
             peers.append(peer)
 
@@ -523,10 +524,12 @@ def _parse_envelope_for_peer(env_file: Path) -> Optional[PeerInfo]:
             fingerprint=fingerprint,
             discovered_via="file",
             last_seen=mtime,
-            transports=[PeerTransport(
-                transport="file",
-                settings={"inbox_path": str(env_file.parent)},
-            )],
+            transports=[
+                PeerTransport(
+                    transport="file",
+                    settings={"inbox_path": str(env_file.parent)},
+                )
+            ],
         )
     except (json.JSONDecodeError, OSError):
         return None

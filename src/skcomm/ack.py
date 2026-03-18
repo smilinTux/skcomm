@@ -16,10 +16,8 @@ so they survive process restarts.
 
 from __future__ import annotations
 
-import json
 import logging
-import time
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
 from typing import Optional
@@ -27,7 +25,7 @@ from typing import Optional
 from pydantic import BaseModel, Field
 
 from .config import SKCOMM_HOME
-from .models import MessageEnvelope, MessageType
+from .models import MessageEnvelope
 
 logger = logging.getLogger("skcomm.ack")
 

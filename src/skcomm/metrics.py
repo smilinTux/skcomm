@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import json
 import logging
-import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
@@ -187,7 +186,8 @@ class MetricsCollector:
             "total_receives": total_recv,
             "overall_success_rate": (
                 f"{(total_ok / (total_ok + total_fail)) * 100:.1f}%"
-                if (total_ok + total_fail) > 0 else "N/A"
+                if (total_ok + total_fail) > 0
+                else "N/A"
             ),
             "transports": {
                 s.transport: {

@@ -46,10 +46,10 @@ from ..transport import (
 
 logger = logging.getLogger("skcomm.transports.tailscale")
 
-LISTEN_PORT = 9385              # TCP port for incoming Tailscale envelopes
-HEADER_SIZE = 4                 # bytes for the big-endian uint32 length prefix
-CONNECT_TIMEOUT = 5.0           # seconds for TCP connect
-ACCEPT_TIMEOUT = 1.0            # seconds for server socket accept (interruptible)
+LISTEN_PORT = 9385  # TCP port for incoming Tailscale envelopes
+HEADER_SIZE = 4  # bytes for the big-endian uint32 length prefix
+CONNECT_TIMEOUT = 5.0  # seconds for TCP connect
+ACCEPT_TIMEOUT = 1.0  # seconds for server socket accept (interruptible)
 MAX_MESSAGE_SIZE = 50 * 1024 * 1024  # 50 MB — sanity limit
 
 
@@ -398,9 +398,7 @@ class TailscaleTransport(Transport):
                         addr[0],
                     )
                     return
-                logger.debug(
-                    "Tailscale: buffered %d-byte envelope from %s", msg_len, addr[0]
-                )
+                logger.debug("Tailscale: buffered %d-byte envelope from %s", msg_len, addr[0])
         except Exception as exc:
             logger.debug("Tailscale connection from %s error: %s", addr[0], exc)
         finally:

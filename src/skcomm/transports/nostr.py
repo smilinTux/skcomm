@@ -28,7 +28,6 @@ import os
 import secrets
 import struct
 import time
-from typing import Optional
 
 from ..transport import (
     HealthStatus,
@@ -432,7 +431,9 @@ def wrap_dm(
 
     # Reason: NIP-59 randomizes created_at to prevent timing correlation
     random_ts = int(time.time()) - secrets.randbelow(172800)
-    gift = _make_event(eph_x.hex(), KIND_GIFT_WRAP, wrapped, [["p", recipient_pubkey_hex]], random_ts)
+    gift = _make_event(
+        eph_x.hex(), KIND_GIFT_WRAP, wrapped, [["p", recipient_pubkey_hex]], random_ts
+    )
     _sign_event(gift, eph_secret)
     return gift
 
@@ -636,8 +637,10 @@ class NostrTransport(Transport):
 
         if not self.is_available():
             return SendResult(
-                success=False, transport_name=self.name,
-                envelope_id=envelope_id, error="Nostr transport not available",
+                success=False,
+                transport_name=self.name,
+                envelope_id=envelope_id,
+                error="Nostr transport not available",
             )
 
         try:
@@ -654,20 +657,27 @@ class NostrTransport(Transport):
             elapsed = (time.monotonic() - start) * 1000
             if published:
                 return SendResult(
-                    success=True, transport_name=self.name,
-                    envelope_id=envelope_id, latency_ms=elapsed,
+                    success=True,
+                    transport_name=self.name,
+                    envelope_id=envelope_id,
+                    latency_ms=elapsed,
                 )
             return SendResult(
-                success=False, transport_name=self.name,
-                envelope_id=envelope_id, latency_ms=elapsed,
+                success=False,
+                transport_name=self.name,
+                envelope_id=envelope_id,
+                latency_ms=elapsed,
                 error="No relay accepted the event",
             )
         except Exception as exc:
             elapsed = (time.monotonic() - start) * 1000
             logger.error("Nostr send failed: %s", exc)
             return SendResult(
-                success=False, transport_name=self.name,
-                envelope_id=envelope_id, latency_ms=elapsed, error=str(exc),
+                success=False,
+                transport_name=self.name,
+                envelope_id=envelope_id,
+                latency_ms=elapsed,
+                error=str(exc),
             )
 
     def receive(self) -> list[bytes]:
@@ -714,8 +724,10 @@ class NostrTransport(Transport):
 
         if not NOSTR_AVAILABLE:
             return HealthStatus(
-                transport_name=self.name, status=TransportStatus.UNAVAILABLE,
-                error=f"Missing: {', '.join(_MISSING)}", details=details,
+                transport_name=self.name,
+                status=TransportStatus.UNAVAILABLE,
+                error=f"Missing: {', '.join(_MISSING)}",
+                details=details,
             )
 
         reachable = 0
@@ -739,8 +751,11 @@ class NostrTransport(Transport):
             st, err = TransportStatus.AVAILABLE, None
 
         return HealthStatus(
-            transport_name=self.name, status=st,
-            latency_ms=latency, error=err, details=details,
+            transport_name=self.name,
+            status=st,
+            latency_ms=latency,
+            error=err,
+            details=details,
         )
 
     def publish_identity(self, fingerprint: str) -> bool:
@@ -754,11 +769,13 @@ class NostrTransport(Transport):
         """
         if not self.is_available():
             return False
-        metadata = json.dumps({
-            "name": f"skcomm-{self._pubkey_hex[:8]}",
-            "about": "SKComm sovereign agent",
-            "skcomm_pgp": fingerprint,
-        })
+        metadata = json.dumps(
+            {
+                "name": f"skcomm-{self._pubkey_hex[:8]}",
+                "about": "SKComm sovereign agent",
+                "skcomm_pgp": fingerprint,
+            }
+        )
         event = _make_event(self._pubkey_hex, 0, metadata, [])
         _sign_event(event, self._secret)
         for relay_url in self._relays:

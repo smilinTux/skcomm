@@ -178,7 +178,9 @@ def receive(config: Optional[str], json_out: bool):
         console.print(table)
     else:
         for env in envelopes:
-            click.echo(f"  {env.sender} [{env.payload.content_type.value}]: {env.payload.content[:80]}")
+            click.echo(
+                f"  {env.sender} [{env.payload.content_type.value}]: {env.payload.content[:80]}"
+            )
 
     _print("")
 
@@ -230,10 +232,10 @@ def daemon(config: Optional[str], interval: int, all_agents: bool):
             agents_info = f" (scanning for: {', '.join(transport._local_names)})"
             break
 
-    _print(f"\n  [bold]SKComm daemon started[/]")
+    _print("\n  [bold]SKComm daemon started[/]")
     _print(f"  Identity: [cyan]{agent_name}[/]{agents_info}")
     _print(f"  Poll interval: {interval}s")
-    _print(f"  Press Ctrl+C to stop.\n")
+    _print("  Press Ctrl+C to stop.\n")
 
     running = True
 
@@ -253,9 +255,7 @@ def daemon(config: Optional[str], interval: int, all_agents: bool):
                 for env in envelopes:
                     preview = env.payload.content[:60]
                     urg = env.metadata.urgency.value.upper()
-                    _print(
-                        f"  [green]>[/] [{urg}] {env.sender} → {env.recipient}: {preview}"
-                    )
+                    _print(f"  [green]>[/] [{urg}] {env.sender} → {env.recipient}: {preview}")
         except Exception as exc:
             _print(f"  [red]Error during receive: {exc}[/]")
 
@@ -347,6 +347,7 @@ def _detect_syncthing() -> Optional[str]:
 
     try:
         import subprocess
+
         result = subprocess.run(
             ["syncthing", "--version"],
             capture_output=True,
@@ -378,31 +379,25 @@ def _check_disk_space_warning(comms_path: Path) -> None:
         target.mkdir(parents=True, exist_ok=True)
         usage = _shutil.disk_usage(target)
         free_pct = (usage.free / usage.total) * 100
-        free_gb = usage.free / (1024 ** 3)
-        total_gb = usage.total / (1024 ** 3)
+        free_gb = usage.free / (1024**3)
+        total_gb = usage.total / (1024**3)
         threshold_gb = total_gb * 0.01
 
         if free_pct < 1.5:
-            _print(
-                f"  [bold red]⚠ LOW DISK SPACE[/]: {free_gb:.1f}GB free ({free_pct:.1f}%)"
-            )
+            _print(f"  [bold red]⚠ LOW DISK SPACE[/]: {free_gb:.1f}GB free ({free_pct:.1f}%)")
             _print(
                 f"    Syncthing default minDiskFree = 1% = [bold]{threshold_gb:.0f}GB[/] on this {total_gb:.0f}GB volume"
             )
             _print(
-                f"    Sync will be [bold red]BLOCKED[/] until you free space or lower the threshold."
+                "    Sync will be [bold red]BLOCKED[/] until you free space or lower the threshold."
             )
-            _print(
-                f"    Fix: set minDiskFree to 100MB in Syncthing folder settings."
-            )
+            _print("    Fix: set minDiskFree to 100MB in Syncthing folder settings.")
         elif free_pct < 5:
             _print(
                 f"  [yellow]![/] Disk space: {free_gb:.1f}GB free ({free_pct:.1f}%) — watch for Syncthing minDiskFree threshold"
             )
         else:
-            _print(
-                f"  [green]✓[/] Disk space: {free_gb:.1f}GB free ({free_pct:.1f}%)"
-            )
+            _print(f"  [green]✓[/] Disk space: {free_gb:.1f}GB free ({free_pct:.1f}%)")
     except OSError:
         pass
 
@@ -417,6 +412,7 @@ def _test_file_transport_ping(drop_root: Path) -> bool:
         bool: True if the write/read/remove succeeded.
     """
     import time
+
     probe = drop_root / "inbox" / f".skcomm_probe_{int(time.time())}.tmp"
     try:
         probe.write_text("ping")
@@ -461,6 +457,7 @@ def init_config(name: Optional[str], fingerprint: Optional[str], force: bool):
     # Prompt for agent name if not provided
     if not name:
         import os
+
         default_name = os.environ.get("USER", "agent")
         name = click.prompt("Agent name", default=default_name)
 
@@ -473,7 +470,7 @@ def init_config(name: Optional[str], fingerprint: Optional[str], force: bool):
     else:
         comms_root = str(Path("~/.skcapstone/comms").expanduser())
         _print(f"  [yellow]![/] Syncthing not detected. Using default: [dim]{comms_root}[/]")
-        _print(f"    Run [cyan]syncthing[/] and share a folder to enable P2P messaging.")
+        _print("    Run [cyan]syncthing[/] and share a folder to enable P2P messaging.")
 
     # Setup directories
     filedrop = home / "filedrop"
@@ -530,14 +527,14 @@ def init_config(name: Optional[str], fingerprint: Optional[str], force: bool):
     _print(f"  [green]✓[/] Config written: [dim]{config_path}[/]")
 
     # Summary
-    _print(f"\n  [bold green]SKComm ready![/]")
+    _print("\n  [bold green]SKComm ready![/]")
     _print(f"  Identity:   [bold cyan]{name}[/]")
     if fingerprint:
         _print(f"  Fingerprint: [dim]{fingerprint}[/]")
-    _print(f"  Transports: syncthing (priority 1), file (priority 2)")
+    _print("  Transports: syncthing (priority 1), file (priority 2)")
     _print(f"  Config:     [dim]{config_path}[/]")
-    _print(f"  API:        [dim]skcomm serve[/] (port 9384)")
-    _print(f"  Send test:  [dim]skcomm send <peer> 'hello'[/]")
+    _print("  API:        [dim]skcomm serve[/] (port 9384)")
+    _print("  Send test:  [dim]skcomm send <peer> 'hello'[/]")
     _print("")
 
 
@@ -641,10 +638,12 @@ def peer_list(json_out: bool):
     if json_out:
         import json as _json
 
-        click.echo(_json.dumps(
-            [p.model_dump(mode="json", exclude_none=True) for p in all_peers],
-            indent=2,
-        ))
+        click.echo(
+            _json.dumps(
+                [p.model_dump(mode="json", exclude_none=True) for p in all_peers],
+                indent=2,
+            )
+        )
         return
 
     if not all_peers:
@@ -665,7 +664,11 @@ def peer_list(json_out: bool):
         for p in all_peers:
             transports = ", ".join(t.transport for t in p.transports) or "-"
             seen = p.last_seen.strftime("%Y-%m-%d %H:%M") if p.last_seen else "-"
-            fp = (p.fingerprint[:16] + "...") if p.fingerprint and len(p.fingerprint) > 16 else (p.fingerprint or "-")
+            fp = (
+                (p.fingerprint[:16] + "...")
+                if p.fingerprint and len(p.fingerprint) > 16
+                else (p.fingerprint or "-")
+            )
             table.add_row(p.name, transports, p.discovered_via, seen, fp)
 
         console.print(table)
@@ -679,7 +682,9 @@ def peer_list(json_out: bool):
 
 @peer_group.command("fetch")
 @click.argument("name")
-@click.option("--url", default=None, help="Custom DID document URL (default: skworld.io registry).")
+@click.option(
+    "--url", default=None, help="Custom DID document URL (default: skworld.io registry)."
+)
 @click.option("--no-save", is_flag=True, help="Display only, don't save to peer store.")
 def peer_fetch(name: str, url: Optional[str], no_save: bool):
     """Fetch a peer's identity from their published DID.
@@ -705,18 +710,20 @@ def peer_fetch(name: str, url: Optional[str], no_save: bool):
         _print(f"\n  [red]Error:[/] {exc}\n")
         raise SystemExit(1)
 
-    _print(f"\n  [green]Peer fetched from DID:[/]")
+    _print("\n  [green]Peer fetched from DID:[/]")
     _print(f"    Name:        [bold]{peer.name}[/]")
     if peer.fingerprint:
         _print(f"    Fingerprint: [dim]{peer.fingerprint}[/]")
     _print(f"    Via:         [dim]{peer.discovered_via}[/]")
     if not no_save:
-        _print(f"    [green]Saved to peer store[/]")
+        _print("    [green]Saved to peer store[/]")
     _print("")
 
 
 @peer_group.command("export")
-@click.option("--file", "-f", "file_path", default=None, help="Write bundle to file instead of stdout.")
+@click.option(
+    "--file", "-f", "file_path", default=None, help="Write bundle to file instead of stdout."
+)
 @click.option("--no-transports", is_flag=True, help="Exclude transport config from bundle.")
 def peer_export(file_path: Optional[str], no_transports: bool):
     """Export your identity as a peer bundle for sharing.
@@ -797,7 +804,7 @@ def peer_import(source: str, no_gpg: bool, yes: bool):
         raise SystemExit(1)
 
     # Show peer info and confirm
-    _print(f"\n  [bold]Peer Bundle:[/]")
+    _print("\n  [bold]Peer Bundle:[/]")
     _print(f"    Name:        [bold]{bundle.get('name', 'N/A')}[/]")
     _print(f"    Fingerprint: [dim]{bundle.get('fingerprint', 'N/A')}[/]")
     _print(f"    Email:       [dim]{bundle.get('email', 'N/A')}[/]")
@@ -821,7 +828,7 @@ def peer_import(source: str, no_gpg: bool, yes: bool):
     if peer.fingerprint:
         _print(f"  Fingerprint: [dim]{peer.fingerprint}[/]")
     if not no_gpg:
-        _print(f"  [dim]Public key imported to GPG keyring[/]")
+        _print("  [dim]Public key imported to GPG keyring[/]")
     _print("")
 
 
@@ -842,10 +849,12 @@ def peers(config: Optional[str], json_out: bool):
     if json_out:
         import json as _json
 
-        click.echo(_json.dumps(
-            [p.model_dump(mode="json", exclude_none=True) for p in all_peers],
-            indent=2,
-        ))
+        click.echo(
+            _json.dumps(
+                [p.model_dump(mode="json", exclude_none=True) for p in all_peers],
+                indent=2,
+            )
+        )
         return
 
     if not all_peers:
@@ -866,7 +875,11 @@ def peers(config: Optional[str], json_out: bool):
         for p in all_peers:
             transports = ", ".join(t.transport for t in p.transports) or "-"
             seen = p.last_seen.strftime("%Y-%m-%d %H:%M") if p.last_seen else "-"
-            fp = (p.fingerprint[:16] + "...") if p.fingerprint and len(p.fingerprint) > 16 else (p.fingerprint or "-")
+            fp = (
+                (p.fingerprint[:16] + "...")
+                if p.fingerprint and len(p.fingerprint) > 16
+                else (p.fingerprint or "-")
+            )
             table.add_row(p.name, transports, p.discovered_via, seen, fp)
 
         console.print(table)
@@ -905,10 +918,12 @@ def discover(config: Optional[str], save: bool, mdns: bool, json_out: bool):
     if json_out:
         import json as _json
 
-        click.echo(_json.dumps(
-            [p.model_dump(mode="json", exclude_none=True) for p in peers_found],
-            indent=2,
-        ))
+        click.echo(
+            _json.dumps(
+                [p.model_dump(mode="json", exclude_none=True) for p in peers_found],
+                indent=2,
+            )
+        )
         if save:
             store = PeerStore()
             for p in peers_found:
@@ -988,9 +1003,7 @@ def heartbeat_group(ctx: click.Context, config: Optional[str], emit: bool, json_
     monitor = HeartbeatMonitor(
         agent_name=cfg.identity.name,
         fingerprint=cfg.identity.fingerprint,
-        transports=[
-            name for name, tc in cfg.transports.items() if tc.enabled
-        ],
+        transports=[name for name, tc in cfg.transports.items() if tc.enabled],
         comms_root=comms_root_path,
     )
 
@@ -1002,10 +1015,12 @@ def heartbeat_group(ctx: click.Context, config: Optional[str], emit: bool, json_
     if json_out:
         import json as _json
 
-        click.echo(_json.dumps(
-            [r.model_dump(mode="json", exclude_none=True) for r in results],
-            indent=2,
-        ))
+        click.echo(
+            _json.dumps(
+                [r.model_dump(mode="json", exclude_none=True) for r in results],
+                indent=2,
+            )
+        )
         return
 
     if not results:
@@ -1103,7 +1118,9 @@ def heartbeat_publish(
         agent_name=agent_name or node_id,
         capabilities=list(capability),
         ttl_seconds=ttl,
-        sync_root=Path(sync_root).expanduser() if sync_root else Path("~/.skcapstone/sync").expanduser(),
+        sync_root=Path(sync_root).expanduser()
+        if sync_root
+        else Path("~/.skcapstone/sync").expanduser(),
         skcomm_status=skcomm_status,
     )
 
@@ -1225,11 +1242,13 @@ def heartbeat_nodes(
     if json_out:
         import json as _json
 
-        click.echo(_json.dumps(
-            [n.model_dump(mode="json") for n in nodes],
-            indent=2,
-            default=str,
-        ))
+        click.echo(
+            _json.dumps(
+                [n.model_dump(mode="json") for n in nodes],
+                indent=2,
+                default=str,
+            )
+        )
         return
 
     if not nodes:
@@ -1298,10 +1317,12 @@ def skill_list(json_out: bool):
     if json_out:
         import json as _json
 
-        click.echo(_json.dumps(
-            [s.model_dump(mode="json", exclude_none=True) for s in skills],
-            indent=2,
-        ))
+        click.echo(
+            _json.dumps(
+                [s.model_dump(mode="json", exclude_none=True) for s in skills],
+                indent=2,
+            )
+        )
         return
 
     if not skills:
@@ -1354,10 +1375,12 @@ def skill_search(query: Optional[str], relay: tuple, json_out: bool):
     if json_out:
         import json as _json
 
-        click.echo(_json.dumps(
-            [s.model_dump(mode="json", exclude_none=True) for s in results],
-            indent=2,
-        ))
+        click.echo(
+            _json.dumps(
+                [s.model_dump(mode="json", exclude_none=True) for s in results],
+                indent=2,
+            )
+        )
         return
 
     if not results:
@@ -1388,7 +1411,9 @@ def skill_search(query: Optional[str], relay: tuple, json_out: bool):
 
 @skill_group.command("publish")
 @click.argument("manifest_path", type=click.Path(exists=True))
-@click.option("--key", envvar="NOSTR_PRIVATE_KEY", help="Nostr private key hex (or NOSTR_PRIVATE_KEY env).")
+@click.option(
+    "--key", envvar="NOSTR_PRIVATE_KEY", help="Nostr private key hex (or NOSTR_PRIVATE_KEY env)."
+)
 @click.option("--relay", "-r", multiple=True, help="Override relay URLs.")
 def skill_publish(manifest_path: str, key: Optional[str], relay: tuple):
     """Publish a skill manifest to the Nostr marketplace.
@@ -1482,10 +1507,12 @@ def queue_list(json_out: bool):
     if json_out:
         import json as _json
 
-        click.echo(_json.dumps(
-            [m.model_dump(mode="json", exclude_none=True) for m in items],
-            indent=2,
-        ))
+        click.echo(
+            _json.dumps(
+                [m.model_dump(mode="json", exclude_none=True) for m in items],
+                indent=2,
+            )
+        )
         return
 
     if not items:
@@ -1543,6 +1570,7 @@ def queue_drain(config: Optional[str]):
 
     def try_send(envelope_bytes: bytes, recipient: str) -> bool:
         from .models import MessageEnvelope
+
         try:
             envelope = MessageEnvelope.from_bytes(envelope_bytes)
             report = comm.send_envelope(envelope)
@@ -1551,7 +1579,9 @@ def queue_drain(config: Optional[str]):
             return False
 
     delivered, failed = q.drain(try_send)
-    _print(f"  [green]{delivered}[/] delivered, [red]{failed}[/] failed, [dim]{q.size}[/] remaining\n")
+    _print(
+        f"  [green]{delivered}[/] delivered, [red]{failed}[/] failed, [dim]{q.size}[/] remaining\n"
+    )
 
 
 @queue_group.command("purge")
@@ -1610,7 +1640,7 @@ def serve(host: str, port: int, reload: bool):
         _print("  Install with: [cyan]pip install skcomm[api][/]\n")
         raise SystemExit(1)
 
-    _print(f"\n  [green]Starting SKComm API server[/]")
+    _print("\n  [green]Starting SKComm API server[/]")
     _print(f"  Host: [cyan]{host}[/]")
     _print(f"  Port: [cyan]{port}[/]")
     _print(f"  Docs: [cyan]http://{host}:{port}/docs[/]\n")
@@ -1682,9 +1712,15 @@ def stats_cmd(json_out: bool, reset: bool):
         table.add_column("Last Error", style="dim", max_width=30)
 
         for s in all_stats:
-            rate_color = "green" if s.success_rate >= 90 else "yellow" if s.success_rate >= 50 else "red"
+            rate_color = (
+                "green" if s.success_rate >= 90 else "yellow" if s.success_rate >= 50 else "red"
+            )
             avg = f"{s.avg_latency_ms:.1f}ms" if s.avg_latency_ms > 0 else "-"
-            err = (s.last_error[:27] + "...") if s.last_error and len(s.last_error) > 30 else (s.last_error or "-")
+            err = (
+                (s.last_error[:27] + "...")
+                if s.last_error and len(s.last_error) > 30
+                else (s.last_error or "-")
+            )
             table.add_row(
                 s.transport,
                 str(s.sends_ok),
@@ -1855,6 +1891,7 @@ def pubsub_publish(topic: str, payload_json: str, sender: Optional[str], config:
     if not sender:
         try:
             from .config import load_config
+
             cfg = load_config(config)
             sender = cfg.identity.name
         except Exception:

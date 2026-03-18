@@ -1,6 +1,5 @@
 """Tests for the SKComm main class."""
 
-import json
 
 import pytest
 
@@ -91,9 +90,7 @@ class TestSKCommSend:
 
     def test_send_with_mode_override(self, comm):
         """Expected: routing mode can be overridden per-message."""
-        report = comm.send(
-            "lumina", "test", mode=RoutingMode.BROADCAST
-        )
+        report = comm.send("lumina", "test", mode=RoutingMode.BROADCAST)
         assert report.delivered is True
 
     def test_send_no_transports(self):
@@ -105,9 +102,7 @@ class TestSKCommSend:
     def test_send_all_fail(self):
         """Failure: all transports failing means delivery fails."""
         router = Router()
-        router.register_transport(
-            MockTransport(name="fail", priority=1, fail_on_send=True)
-        )
+        router.register_transport(MockTransport(name="fail", priority=1, fail_on_send=True))
         comm = SKComm(router=router)
         report = comm.send("lumina", "This won't make it")
         assert report.delivered is False

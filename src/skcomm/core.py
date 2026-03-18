@@ -86,8 +86,8 @@ class MessagePriorityQueue:
 
 _RETRY_QUEUE_PATH = Path("~/.skcapstone/retry_queue.jsonl")
 _RETRY_MAX_ATTEMPTS = 10
-_RETRY_BASE_BACKOFF = 1   # seconds
-_RETRY_MAX_BACKOFF = 60   # seconds
+_RETRY_BASE_BACKOFF = 1  # seconds
+_RETRY_MAX_BACKOFF = 60  # seconds
 
 
 class RetryQueue:
@@ -153,9 +153,7 @@ class RetryQueue:
             "envelope_json": envelope_json,
             "attempt": 1,
             "max_attempts": _RETRY_MAX_ATTEMPTS,
-            "next_retry_at": (
-                now + timedelta(seconds=_RETRY_BASE_BACKOFF)
-            ).isoformat(),
+            "next_retry_at": (now + timedelta(seconds=_RETRY_BASE_BACKOFF)).isoformat(),
             "last_error": error,
             "queued_at": now.isoformat(),
         }
@@ -260,8 +258,7 @@ class RetryQueue:
             attempt = entry["attempt"] + 1
             if attempt > entry["max_attempts"]:
                 logger.warning(
-                    "RetryQueue: giving up on %s after %d attempts — "
-                    "last error: %s",
+                    "RetryQueue: giving up on %s after %d attempts — last error: %s",
                     entry["envelope_id"][:8],
                     entry["attempt"],
                     entry.get("last_error", "unknown"),
@@ -273,9 +270,7 @@ class RetryQueue:
                 _RETRY_MAX_BACKOFF,
             )
             entry["attempt"] = attempt
-            entry["next_retry_at"] = (
-                now + timedelta(seconds=backoff)
-            ).isoformat()
+            entry["next_retry_at"] = (now + timedelta(seconds=backoff)).isoformat()
             keep.append(json.dumps(entry))
 
         # Phase 3: flush — prepend kept entries to any newly appended ones
@@ -306,9 +301,7 @@ class RetryQueue:
         try:
             from .models import MessageEnvelope
 
-            envelope = MessageEnvelope.from_bytes(
-                entry["envelope_json"].encode("utf-8")
-            )
+            envelope = MessageEnvelope.from_bytes(entry["envelope_json"].encode("utf-8"))
             report = self._router.route(envelope)
             delivered = getattr(report, "delivered", False)
             if not delivered and report.attempts:
@@ -369,6 +362,7 @@ class SKComm:
         self._ack_tracker = None
         if self._config.ack:
             from .ack import AckTracker
+
             self._ack_tracker = AckTracker()
         self._outbox = PersistentOutbox(router=self._router)
         self._retry_queue = RetryQueue(router=self._router)
@@ -505,9 +499,7 @@ class SKComm:
         report = self._router.route(envelope)
 
         if not report.delivered:
-            last_error = (
-                report.attempts[-1].error if report.attempts else "all transports failed"
-            )
+            last_error = report.attempts[-1].error if report.attempts else "all transports failed"
             error_msg = last_error or "all transports failed"
             self._outbox.enqueue(
                 envelope.envelope_id,
@@ -581,9 +573,7 @@ class SKComm:
             try:
                 envelope = MessageEnvelope.from_bytes(data)
                 if envelope.is_expired:
-                    logger.debug(
-                        "Discarding expired envelope %s", envelope.envelope_id[:8]
-                    )
+                    logger.debug("Discarding expired envelope %s", envelope.envelope_id[:8])
                     continue
                 envelope = self._apply_inbound_crypto(envelope)
                 envelope = self._apply_decompression(envelope)
@@ -669,6 +659,7 @@ class SKComm:
             MessageEnvelope with compressed content, or unchanged if too small.
         """
         from .compression import compress_payload
+
         return compress_payload(envelope)
 
     @staticmethod
@@ -682,6 +673,7 @@ class SKComm:
             MessageEnvelope with decompressed content, or unchanged.
         """
         from .compression import decompress_payload
+
         return decompress_payload(envelope)
 
     def status(self) -> dict:
@@ -730,9 +722,7 @@ def _init_crypto():
         return None, None
 
 
-def _load_transport(
-    name: str, priority: int, settings: dict
-) -> Optional[Transport]:
+def _load_transport(name: str, priority: int, settings: dict) -> Optional[Transport]:
     """Attempt to load and configure a transport by name.
 
     Args:

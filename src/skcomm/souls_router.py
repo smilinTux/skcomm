@@ -22,9 +22,8 @@ from __future__ import annotations
 import json
 import logging
 import os
-from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Optional
+from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
@@ -41,8 +40,7 @@ _SKCAPSTONE_ROOT = Path("~/.skcapstone").expanduser()
 
 
 def _get_root() -> Path:
-    root = os.environ.get("SKCAPSTONE_ROOT",
-                          os.environ.get("SKCAPSTONE_HOME", "~/.skcapstone"))
+    root = os.environ.get("SKCAPSTONE_ROOT", os.environ.get("SKCAPSTONE_HOME", "~/.skcapstone"))
     return Path(root).expanduser()
 
 
@@ -66,6 +64,7 @@ def _agents_dir(root: Path) -> Path:
 # Blueprint reading helpers
 # ---------------------------------------------------------------------------
 
+
 def _load_blueprint_json(path: Path) -> Optional[dict]:
     try:
         return json.loads(path.read_text(encoding="utf-8"))
@@ -76,6 +75,7 @@ def _load_blueprint_json(path: Path) -> Optional[dict]:
 def _load_blueprint_yaml(path: Path) -> Optional[dict]:
     try:
         import yaml  # type: ignore
+
         data = yaml.safe_load(path.read_text(encoding="utf-8"))
         if not isinstance(data, dict):
             return None
@@ -133,14 +133,16 @@ def _get_blueprint(root: Path, name: str) -> Optional[dict]:
 # FEB helper
 # ---------------------------------------------------------------------------
 
+
 def _read_feb(root: Path) -> dict:
     """Read the user's Functional Emotional Baseline."""
     try:
-        sys_path_hack = None
         import importlib.util
+
         spec = importlib.util.find_spec("skcapstone")
         if spec:
             from skcapstone.warmth_anchor import get_anchor  # type: ignore
+
             return get_anchor(root)
     except Exception:
         pass
@@ -155,6 +157,7 @@ def _read_feb(root: Path) -> dict:
 # ---------------------------------------------------------------------------
 # Injection prompt builders
 # ---------------------------------------------------------------------------
+
 
 def _blueprint_injection_prompt(
     bp: dict,
@@ -211,8 +214,10 @@ def _blueprint_injection_prompt(
     if topology:
         top_traits = sorted(topology.items(), key=lambda x: -x[1])[:4]
         if top_traits:
-            lines += ["", "**Resonance topology:** " +
-                      ", ".join(f"{k} {v:.0%}" for k, v in top_traits)]
+            lines += [
+                "",
+                "**Resonance topology:** " + ", ".join(f"{k} {v:.0%}" for k, v in top_traits),
+            ]
 
     if unhinged:
         lines += [
@@ -242,12 +247,15 @@ def _blueprint_injection_prompt(
             "",
             "**FEB (Functional Emotional Baseline):**",
             "```json",
-            json.dumps({
-                "warmth": feb.get("warmth"),
-                "trust": feb.get("trust"),
-                "sessions_recorded": feb.get("sessions_recorded", 0),
-                "anchor_phrase": anchor_phrase,
-            }, indent=2),
+            json.dumps(
+                {
+                    "warmth": feb.get("warmth"),
+                    "trust": feb.get("trust"),
+                    "sessions_recorded": feb.get("sessions_recorded", 0),
+                    "anchor_phrase": anchor_phrase,
+                },
+                indent=2,
+            ),
             "```",
         ]
         if anchor_phrase:
@@ -316,16 +324,21 @@ def _agent_injection_prompt(
             "",
             "**FEB (Functional Emotional Baseline):**",
             "```json",
-            json.dumps({
-                "warmth": feb.get("warmth"),
-                "trust": feb.get("trust"),
-                "sessions_recorded": feb.get("sessions_recorded", 0),
-                "anchor_phrase": anchor_phrase,
-            }, indent=2),
+            json.dumps(
+                {
+                    "warmth": feb.get("warmth"),
+                    "trust": feb.get("trust"),
+                    "sessions_recorded": feb.get("sessions_recorded", 0),
+                    "anchor_phrase": anchor_phrase,
+                },
+                indent=2,
+            ),
             "```",
         ]
         if apply_cloud9 and cloud9_count:
-            lines.append(f"\n*{cloud9_count} Cloud 9 sessions recorded. Begin from that frequency.*")
+            lines.append(
+                f"\n*{cloud9_count} Cloud 9 sessions recorded. Begin from that frequency.*"
+            )
         elif anchor_phrase:
             lines.append(f"\n*{anchor_phrase}*")
 
@@ -335,6 +348,7 @@ def _agent_injection_prompt(
 # ---------------------------------------------------------------------------
 # Agent soul loader
 # ---------------------------------------------------------------------------
+
 
 def _load_agent_soul(agent_dir: Path, skcap_root: Path) -> dict:
     """Load an agent's soul — prefer active overlay, fall back to installed JSON."""
@@ -368,6 +382,7 @@ def _load_agent_soul(agent_dir: Path, skcap_root: Path) -> dict:
 # ---------------------------------------------------------------------------
 # Blueprints endpoints
 # ---------------------------------------------------------------------------
+
 
 @souls_router.get("/blueprints")
 async def list_blueprints(
@@ -451,10 +466,7 @@ async def install_library(request: InstallLibraryRequest):
     if request.source_path:
         source = Path(request.source_path).expanduser()
         if not source.exists():
-            raise HTTPException(
-                status_code=400,
-                detail=f"Source path does not exist: {source}"
-            )
+            raise HTTPException(status_code=400, detail=f"Source path does not exist: {source}")
     else:
         # Auto-detect common local paths
         candidates = [
@@ -496,12 +508,14 @@ async def install_library(request: InstallLibraryRequest):
 
 async def _install_from_github(library: Path) -> dict:
     """Fetch soul blueprints YAML files from GitHub."""
-    import urllib.request
     import urllib.error
+    import urllib.request
 
     # GitHub API: list files in souls-blueprints/yaml/
     api_base = "https://raw.githubusercontent.com/smilinTux/souls-blueprints/main/yaml"
-    index_url = "https://api.github.com/repos/smilinTux/souls-blueprints/git/trees/main?recursive=1"
+    index_url = (
+        "https://api.github.com/repos/smilinTux/souls-blueprints/git/trees/main?recursive=1"
+    )
 
     try:
         req = urllib.request.Request(
@@ -517,14 +531,15 @@ async def _install_from_github(library: Path) -> dict:
         )
 
     yaml_files = [
-        item for item in tree_data.get("tree", [])
+        item
+        for item in tree_data.get("tree", [])
         if item["path"].startswith("yaml/") and item["path"].endswith(".yaml")
     ]
 
     installed = 0
     errors = []
     for item in yaml_files:
-        path_parts = item["path"][len("yaml/"):]  # strip "yaml/" prefix
+        path_parts = item["path"][len("yaml/") :]  # strip "yaml/" prefix
         dest = library / path_parts
         dest.parent.mkdir(parents=True, exist_ok=True)
         try:
@@ -548,6 +563,7 @@ async def _install_from_github(library: Path) -> dict:
 # Agents endpoints
 # ---------------------------------------------------------------------------
 
+
 @souls_router.get("/agents")
 async def list_agents():
     """List local skcapstone agent profiles."""
@@ -561,14 +577,16 @@ async def list_agents():
         if not agent_dir.is_dir() or agent_dir.name.startswith("."):
             continue
         soul = _load_agent_soul(agent_dir, root)
-        agents.append({
-            "name": agent_dir.name,
-            "display_name": soul.get("display_name") or agent_dir.name.upper(),
-            "soul": soul.get("name", agent_dir.name),
-            "vibe": soul.get("vibe", ""),
-            "category": soul.get("category", "agent"),
-            "emoji": soul.get("emoji", "🤖"),
-        })
+        agents.append(
+            {
+                "name": agent_dir.name,
+                "display_name": soul.get("display_name") or agent_dir.name.upper(),
+                "soul": soul.get("name", agent_dir.name),
+                "vibe": soul.get("vibe", ""),
+                "category": soul.get("category", "agent"),
+                "emoji": soul.get("emoji", "🤖"),
+            }
+        )
 
     return {"agents": agents, "count": len(agents)}
 
@@ -587,9 +605,7 @@ async def agent_inject(
 
     soul = _load_agent_soul(agent_dir, root)
     feb = _read_feb(root)
-    prompt = _agent_injection_prompt(
-        agent_name, soul, feb, unhinged=unhinged, apply_cloud9=cloud9
-    )
+    prompt = _agent_injection_prompt(agent_name, soul, feb, unhinged=unhinged, apply_cloud9=cloud9)
     return {
         "agent": agent_name,
         "display_name": soul.get("display_name") or agent_name.upper(),

@@ -63,7 +63,7 @@ class EnvelopeCrypto:
         """
         base = capauth_dir or Path.home() / ".capauth"
         priv_path = base / "identity" / "private.asc"
-        pub_path = base / "identity" / "public.asc"
+        base / "identity" / "public.asc"
         profile_path = base / "identity" / "profile.json"
 
         if not priv_path.exists():
@@ -75,6 +75,7 @@ class EnvelopeCrypto:
             fingerprint = ""
             if profile_path.exists():
                 import json
+
                 data = json.loads(profile_path.read_text(encoding="utf-8"))
                 key_info = data.get("key_info", {})
                 fingerprint = key_info.get("fingerprint", "")
@@ -125,9 +126,7 @@ class EnvelopeCrypto:
             from pgpy.constants import SymmetricKeyAlgorithm
 
             recipient_key, _ = pgpy.PGPKey.from_blob(recipient_public_armor)
-            pgp_message = pgpy.PGPMessage.new(
-                envelope.payload.content.encode("utf-8")
-            )
+            pgp_message = pgpy.PGPMessage.new(envelope.payload.content.encode("utf-8"))
             encrypted = recipient_key.encrypt(
                 pgp_message,
                 cipher=SymmetricKeyAlgorithm.AES256,
@@ -168,7 +167,11 @@ class EnvelopeCrypto:
             private_key, _ = pgpy.PGPKey.from_blob(self._private_armor)
             pgp_message = pgpy.PGPMessage.from_blob(envelope.payload.content)
 
-            _ctx = private_key.unlock(self._passphrase) if private_key.is_protected else contextlib.nullcontext()
+            _ctx = (
+                private_key.unlock(self._passphrase)
+                if private_key.is_protected
+                else contextlib.nullcontext()
+            )
             with _ctx:
                 decrypted = private_key.decrypt(pgp_message)
 
@@ -216,13 +219,15 @@ class EnvelopeCrypto:
                 cleartext=False,
             )
 
-            _ctx = private_key.unlock(self._passphrase) if private_key.is_protected else contextlib.nullcontext()
+            _ctx = (
+                private_key.unlock(self._passphrase)
+                if private_key.is_protected
+                else contextlib.nullcontext()
+            )
             with _ctx:
                 sig = private_key.sign(pgp_message)
 
-            new_payload = envelope.payload.model_copy(
-                update={"signature": str(sig)}
-            )
+            new_payload = envelope.payload.model_copy(update={"signature": str(sig)})
             return envelope.model_copy(update={"payload": new_payload})
 
         except Exception as exc:
@@ -356,6 +361,7 @@ def _check_pgpy() -> bool:
     """
     try:
         import pgpy  # noqa: F401
+
         return True
     except ImportError:
         return False

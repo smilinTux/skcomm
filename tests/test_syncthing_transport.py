@@ -295,13 +295,12 @@ class TestSyncthingRoundTrip:
         agent_a.send(env.to_bytes(), "lumina")
 
         # Simulate Syncthing sync: move file from outbox to inbox
-        outbox_file = list(
-            (comms_root / "outbox" / "lumina").glob(f"*{ENVELOPE_SUFFIX}")
-        )[0]
+        outbox_file = list((comms_root / "outbox" / "lumina").glob(f"*{ENVELOPE_SUFFIX}"))[0]
         inbox_dir = comms_root / "inbox" / "opus"
         inbox_dir.mkdir(parents=True, exist_ok=True)
 
         import shutil
+
         shutil.copy(str(outbox_file), str(inbox_dir / outbox_file.name))
 
         received = agent_b.receive()

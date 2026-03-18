@@ -9,9 +9,8 @@ import pytest
 from skcomm.compression import (
     COMPRESSION_HEADER_GZIP,
     COMPRESSION_HEADER_ZSTD,
-    DEFAULT_MIN_SIZE,
-    CompressionAlgo,
     HAS_ZSTD,
+    CompressionAlgo,
     compress_payload,
     decompress_payload,
 )
@@ -73,10 +72,14 @@ class TestGzipCompression:
     def test_preserves_content_type(self):
         """Compression preserves the content_type field."""
         env = _make_envelope(_large_content())
-        env = env.model_copy(update={"payload": MessagePayload(
-            content=_large_content(),
-            content_type=MessageType.SEED,
-        )})
+        env = env.model_copy(
+            update={
+                "payload": MessagePayload(
+                    content=_large_content(),
+                    content_type=MessageType.SEED,
+                )
+            }
+        )
         compressed = compress_payload(env)
         assert compressed.payload.content_type == MessageType.SEED
 
@@ -108,7 +111,7 @@ class TestGzipCompression:
         compressed = compress_payload(env)
         original_size = len(content.encode())
         compressed_raw = base64.b64decode(
-            compressed.payload.content[len(COMPRESSION_HEADER_GZIP):]
+            compressed.payload.content[len(COMPRESSION_HEADER_GZIP) :]
         )
         assert len(compressed_raw) < original_size
 
@@ -131,9 +134,14 @@ class TestDecompression:
     def test_decompress_unknown_format(self):
         """Unknown compression header returns envelope as-is."""
         env = _make_envelope("unknown:data")
-        env = env.model_copy(update={"payload": MessagePayload(
-            content="unknown:data", compressed=True,
-        )})
+        env = env.model_copy(
+            update={
+                "payload": MessagePayload(
+                    content="unknown:data",
+                    compressed=True,
+                )
+            }
+        )
         result = decompress_payload(env)
         assert result.payload.content == "unknown:data"
         assert result.payload.compressed is True
@@ -149,6 +157,7 @@ class TestDecompression:
     def test_roundtrip_large_json(self):
         """Compression works for large JSON-like content."""
         import json
+
         data = json.dumps([{"key": f"value-{i}", "data": "x" * 100} for i in range(50)])
         env = _make_envelope(data)
         compressed = compress_payload(env, min_size=10)
@@ -186,7 +195,7 @@ class TestZstdCompression:
         env = _make_envelope(content)
         compressed = compress_payload(env, algorithm=CompressionAlgo.ZSTD)
         compressed_raw = base64.b64decode(
-            compressed.payload.content[len(COMPRESSION_HEADER_ZSTD):]
+            compressed.payload.content[len(COMPRESSION_HEADER_ZSTD) :]
         )
         assert len(compressed_raw) < len(content.encode())
 

@@ -3,11 +3,9 @@
 from __future__ import annotations
 
 import json
-import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-import pytest
 import yaml
 
 from skcomm.discovery import (
@@ -24,13 +22,15 @@ from skcomm.discovery import (
 def _write_envelope(directory: Path, sender: str, envelope_id: str = "test-001") -> Path:
     """Write a minimal envelope file to a directory."""
     directory.mkdir(parents=True, exist_ok=True)
-    data = json.dumps({
-        "skcomm_version": "1.0.0",
-        "envelope_id": envelope_id,
-        "sender": sender,
-        "recipient": "test-agent",
-        "payload": {"content": "hello", "content_type": "text"},
-    })
+    data = json.dumps(
+        {
+            "skcomm_version": "1.0.0",
+            "envelope_id": envelope_id,
+            "sender": sender,
+            "recipient": "test-agent",
+            "payload": {"content": "hello", "content_type": "text"},
+        }
+    )
     path = directory / f"{envelope_id}{ENVELOPE_SUFFIX}"
     path.write_text(data)
     return path
@@ -140,11 +140,13 @@ class TestPeerStore:
     def test_add_merges_existing(self, tmp_path):
         store = PeerStore(peers_dir=tmp_path / "peers")
         store.add(PeerInfo(name="lumina", fingerprint="FP"))
-        store.add(PeerInfo(
-            name="lumina",
-            nostr_pubkey="npub_xyz",
-            transports=[PeerTransport(transport="nostr", settings={"relay": "wss://r"})],
-        ))
+        store.add(
+            PeerInfo(
+                name="lumina",
+                nostr_pubkey="npub_xyz",
+                transports=[PeerTransport(transport="nostr", settings={"relay": "wss://r"})],
+            )
+        )
         loaded = store.get("lumina")
         assert loaded.fingerprint == "FP"
         assert loaded.nostr_pubkey == "npub_xyz"

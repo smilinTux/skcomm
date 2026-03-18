@@ -8,7 +8,6 @@ import pytest
 
 from skcomm.ratelimit import RateLimitConfig, RateLimiter, TokenBucket
 
-
 # ═══════════════════════════════════════════════════════════
 # TokenBucket
 # ═══════════════════════════════════════════════════════════
@@ -94,7 +93,9 @@ class TestRateLimiterBasics:
         assert rl.allow("syncthing", "lumina") is True
 
     def test_deny_after_burst(self):
-        config = RateLimitConfig(transport_capacity=3, transport_refill=0, peer_capacity=10, peer_refill=0)
+        config = RateLimitConfig(
+            transport_capacity=3, transport_refill=0, peer_capacity=10, peer_refill=0
+        )
         rl = RateLimiter(default_config=config)
 
         assert rl.allow("nostr", "a") is True
@@ -103,7 +104,9 @@ class TestRateLimiterBasics:
         assert rl.allow("nostr", "d") is False
 
     def test_peer_limit_independent(self):
-        config = RateLimitConfig(transport_capacity=100, transport_refill=0, peer_capacity=2, peer_refill=0)
+        config = RateLimitConfig(
+            transport_capacity=100, transport_refill=0, peer_capacity=2, peer_refill=0
+        )
         rl = RateLimiter(default_config=config)
 
         assert rl.allow("nostr", "lumina") is True
@@ -132,7 +135,9 @@ class TestOverrides:
 
     def test_override_applies(self):
         default = RateLimitConfig(transport_capacity=100, transport_refill=0)
-        nostr_config = RateLimitConfig(transport_capacity=2, transport_refill=0, peer_capacity=10, peer_refill=0)
+        nostr_config = RateLimitConfig(
+            transport_capacity=2, transport_refill=0, peer_capacity=10, peer_refill=0
+        )
         rl = RateLimiter(default_config=default, overrides={"nostr": nostr_config})
 
         assert rl.allow("nostr") is True
@@ -143,7 +148,9 @@ class TestOverrides:
             assert rl.allow("syncthing") is True
 
     def test_override_does_not_affect_others(self):
-        nostr_config = RateLimitConfig(transport_capacity=1, transport_refill=0, peer_capacity=10, peer_refill=0)
+        nostr_config = RateLimitConfig(
+            transport_capacity=1, transport_refill=0, peer_capacity=10, peer_refill=0
+        )
         rl = RateLimiter(overrides={"nostr": nostr_config})
 
         rl.allow("nostr")
@@ -164,7 +171,9 @@ class TestWaitAndStatus:
         assert rl.wait_time("syncthing") == 0.0
 
     def test_wait_time_after_exhaustion(self):
-        config = RateLimitConfig(transport_capacity=1, transport_refill=1.0, peer_capacity=10, peer_refill=1.0)
+        config = RateLimitConfig(
+            transport_capacity=1, transport_refill=1.0, peer_capacity=10, peer_refill=1.0
+        )
         rl = RateLimiter(default_config=config)
         rl.allow("nostr")
         w = rl.wait_time("nostr")
@@ -197,7 +206,9 @@ class TestRefill:
     """Test that tokens refill correctly over time."""
 
     def test_refill_restores_after_denial(self):
-        config = RateLimitConfig(transport_capacity=1, transport_refill=100, peer_capacity=10, peer_refill=100)
+        config = RateLimitConfig(
+            transport_capacity=1, transport_refill=100, peer_capacity=10, peer_refill=100
+        )
         rl = RateLimiter(default_config=config)
 
         rl.allow("nostr")
@@ -207,7 +218,9 @@ class TestRefill:
         assert rl.allow("nostr") is True
 
     def test_peer_refill_independent(self):
-        config = RateLimitConfig(transport_capacity=100, transport_refill=100, peer_capacity=1, peer_refill=100)
+        config = RateLimitConfig(
+            transport_capacity=100, transport_refill=100, peer_capacity=1, peer_refill=100
+        )
         rl = RateLimiter(default_config=config)
 
         rl.allow("nostr", "lumina")

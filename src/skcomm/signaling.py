@@ -39,9 +39,9 @@ if TYPE_CHECKING:
 logger = logging.getLogger("skcomm.signaling")
 
 # Rate limiting defaults
-MAX_MESSAGES_PER_MINUTE = 60   # Per-peer message rate limit
-MAX_PEERS_PER_ROOM = 50        # Maximum concurrent connections per room
-RATE_WINDOW_SECONDS = 60.0     # Sliding window for rate counting
+MAX_MESSAGES_PER_MINUTE = 60  # Per-peer message rate limit
+MAX_PEERS_PER_ROOM = 50  # Maximum concurrent connections per room
+RATE_WINDOW_SECONDS = 60.0  # Sliding window for rate counting
 
 
 class WebRTCRoom:
@@ -99,9 +99,7 @@ class WebRTCRoom:
         cutoff = now - RATE_WINDOW_SECONDS
         timestamps = self._message_timestamps[fingerprint]
         # Prune old timestamps outside the window
-        self._message_timestamps[fingerprint] = [
-            ts for ts in timestamps if ts > cutoff
-        ]
+        self._message_timestamps[fingerprint] = [ts for ts in timestamps if ts > cutoff]
         return len(self._message_timestamps[fingerprint]) >= MAX_MESSAGES_PER_MINUTE
 
     def record_message(self, fingerprint: str) -> None:
@@ -185,9 +183,7 @@ class WebRTCRoom:
             try:
                 await self._send(partner_ws, {"type": "cancel_ice", "peer": fingerprint})
             except Exception as exc:
-                logger.debug(
-                    "Failed to send cancel_ice to %s: %s", partner_fp[:8], exc
-                )
+                logger.debug("Failed to send cancel_ice to %s: %s", partner_fp[:8], exc)
         if partners:
             logger.info(
                 "Cancelled %d ICE session(s) for departing peer %s",
@@ -395,14 +391,18 @@ class SignalingBroker:
                         MAX_MESSAGES_PER_MINUTE,
                     )
                     try:
-                        await ws.send_text(json.dumps({
-                            "type": "error",
-                            "code": "RATE_LIMITED",
-                            "message": (
-                                f"Rate limit exceeded: max {MAX_MESSAGES_PER_MINUTE} "
-                                f"messages per {int(RATE_WINDOW_SECONDS)}s"
-                            ),
-                        }))
+                        await ws.send_text(
+                            json.dumps(
+                                {
+                                    "type": "error",
+                                    "code": "RATE_LIMITED",
+                                    "message": (
+                                        f"Rate limit exceeded: max {MAX_MESSAGES_PER_MINUTE} "
+                                        f"messages per {int(RATE_WINDOW_SECONDS)}s"
+                                    ),
+                                }
+                            )
+                        )
                     except Exception:
                         pass
                     continue
@@ -417,9 +417,7 @@ class SignalingBroker:
                     # (anti-spoofing: client cannot forge a different "from")
                     await room.relay(sender=peer_id, to=to, data=data)
                 else:
-                    logger.debug(
-                        "Unhandled signal type '%s' from %s", msg_type, peer_id[:8]
-                    )
+                    logger.debug("Unhandled signal type '%s' from %s", msg_type, peer_id[:8])
 
         except Exception as exc:
             # Normal on disconnect (WebSocketDisconnect, CancelledError, etc.)

@@ -8,8 +8,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from skcomm.capauth_validator import CapAuthValidator, _FINGERPRINT_RE, _TOKEN_WINDOW_SECS
-
+from skcomm.capauth_validator import _FINGERPRINT_RE, _TOKEN_WINDOW_SECS, CapAuthValidator
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -282,7 +281,9 @@ class TestValidateRemote:
         """Expected: returns fingerprint when remote API responds valid."""
         v = CapAuthValidator(capauth_url="https://capauth.example.com", require_auth=True)
         mock_response = MagicMock()
-        mock_response.read.return_value = f'{{"fingerprint": "{VALID_FP}", "valid": true}}'.encode()
+        mock_response.read.return_value = (
+            f'{{"fingerprint": "{VALID_FP}", "valid": true}}'.encode()
+        )
         mock_response.__enter__ = lambda s: s
         mock_response.__exit__ = MagicMock(return_value=False)
 
@@ -338,7 +339,7 @@ class TestLoadPublicKey:
 
     def test_loads_from_key_file(self, tmp_path):
         """Expected: loads key from ~/.skcomm/keys/<FP>.asc if present."""
-        import pgpy as _pgpy_module  # may not be installed; skip if absent
+
         pytest.importorskip("pgpy")
 
         key_dir = tmp_path / ".skcomm" / "keys"
@@ -368,7 +369,9 @@ class TestLoadPublicKey:
 
         mock_result = MagicMock()
         mock_result.returncode = 0
-        mock_result.stdout = "-----BEGIN PGP PUBLIC KEY BLOCK-----\nfake\n-----END PGP PUBLIC KEY BLOCK-----"
+        mock_result.stdout = (
+            "-----BEGIN PGP PUBLIC KEY BLOCK-----\nfake\n-----END PGP PUBLIC KEY BLOCK-----"
+        )
 
         v = CapAuthValidator()
         with patch("pathlib.Path.home", return_value=tmp_path):

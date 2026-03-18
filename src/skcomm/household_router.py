@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
@@ -32,8 +32,8 @@ _ONLINE_THRESHOLD_SECONDS = 300
 def _get_root() -> Path:
     """Resolve the skcapstone shared root."""
     import os
-    root = os.environ.get("SKCAPSTONE_ROOT",
-                          os.environ.get("SKCAPSTONE_HOME", "~/.skcapstone"))
+
+    root = os.environ.get("SKCAPSTONE_ROOT", os.environ.get("SKCAPSTONE_HOME", "~/.skcapstone"))
     return Path(root).expanduser()
 
 
@@ -52,10 +52,7 @@ def _agent_dirs(root: Path) -> list[Path]:
     agents_dir = root / "agents"
     if not agents_dir.exists():
         return []
-    return sorted(
-        d for d in agents_dir.iterdir()
-        if d.is_dir() and not d.name.startswith(".")
-    )
+    return sorted(d for d in agents_dir.iterdir() if d.is_dir() and not d.name.startswith("."))
 
 
 def _heartbeat_status(root: Path, agent_name: str) -> dict[str, Any]:
@@ -111,21 +108,21 @@ def _agent_summary(root: Path, agent_dir: Path) -> dict[str, Any]:
     memory_stats = {"short_term": 0, "mid_term": 0, "long_term": 0}
     mem_dir = agent_dir / "memory"
     if mem_dir.exists():
-        for tier, dirname in [("short_term", "short-term"),
-                               ("mid_term", "mid-term"),
-                               ("long_term", "long-term")]:
+        for tier, dirname in [
+            ("short_term", "short-term"),
+            ("mid_term", "mid-term"),
+            ("long_term", "long-term"),
+        ]:
             tier_dir = mem_dir / dirname
             if tier_dir.exists():
                 memory_stats[tier] = sum(
-                    1 for f in tier_dir.iterdir()
-                    if f.suffix in (".json", ".md", ".yaml")
+                    1 for f in tier_dir.iterdir() if f.suffix in (".json", ".md", ".yaml")
                 )
 
     return {
         "name": name,
         "fingerprint": identity.get("fingerprint", ""),
-        "entity_type": manifest.get("entity_type",
-                                    identity.get("entity_type", "ai-agent")),
+        "entity_type": manifest.get("entity_type", identity.get("entity_type", "ai-agent")),
         "soul": soul.get("active_soul", ""),
         "online": hb.get("online", False),
         "last_seen": hb.get("last_seen"),
@@ -173,9 +170,7 @@ async def get_agent_memories(
         return {"agent": agent_name, "memories": [], "count": 0}
 
     memories = []
-    tiers = [("short-term", "short_term"),
-             ("mid-term", "mid_term"),
-             ("long-term", "long_term")]
+    tiers = [("short-term", "short_term"), ("mid-term", "mid_term"), ("long-term", "long_term")]
 
     if layer:
         tiers = [(t, l) for t, l in tiers if l == layer or t == layer]

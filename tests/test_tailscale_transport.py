@@ -3,10 +3,8 @@
 from __future__ import annotations
 
 import json
-import socket
 import struct
-import subprocess
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -22,7 +20,6 @@ from skcomm.transports.tailscale import (
     TailscaleTransport,
     create_transport,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -391,15 +388,17 @@ class TestTailscaleStatusLookup:
     def test_hostname_exact_match(self, transport_no_tailscale):
         """Expected: returns IP when HostName exactly matches recipient."""
         t = transport_no_tailscale
-        status_json = json.dumps({
-            "Peer": {
-                "nodekey:abc": {
-                    "HostName": "lumina",
-                    "DNSName": "lumina.tailnet",
-                    "TailscaleIPs": ["100.64.0.50", "fd7a::1"],
+        status_json = json.dumps(
+            {
+                "Peer": {
+                    "nodekey:abc": {
+                        "HostName": "lumina",
+                        "DNSName": "lumina.tailnet",
+                        "TailscaleIPs": ["100.64.0.50", "fd7a::1"],
+                    }
                 }
             }
-        })
+        )
         mock_result = MagicMock()
         mock_result.returncode = 0
         mock_result.stdout = status_json
@@ -410,15 +409,17 @@ class TestTailscaleStatusLookup:
     def test_hostname_substring_no_match(self, transport_no_tailscale):
         """Expected: 'ops' must NOT match HostName 'devops' — no substring matching."""
         t = transport_no_tailscale
-        status_json = json.dumps({
-            "Peer": {
-                "nodekey:abc": {
-                    "HostName": "devops",
-                    "DNSName": "devops.tailnet",
-                    "TailscaleIPs": ["100.64.0.77"],
+        status_json = json.dumps(
+            {
+                "Peer": {
+                    "nodekey:abc": {
+                        "HostName": "devops",
+                        "DNSName": "devops.tailnet",
+                        "TailscaleIPs": ["100.64.0.77"],
+                    }
                 }
             }
-        })
+        )
         mock_result = MagicMock()
         mock_result.returncode = 0
         mock_result.stdout = status_json
@@ -429,15 +430,17 @@ class TestTailscaleStatusLookup:
     def test_dns_label_substring_no_match(self, transport_no_tailscale):
         """Expected: 'dev' must NOT match DNSName 'devops.tailnet' — first label only."""
         t = transport_no_tailscale
-        status_json = json.dumps({
-            "Peer": {
-                "nodekey:abc": {
-                    "HostName": "devops-box",
-                    "DNSName": "devops.tailnet",
-                    "TailscaleIPs": ["100.64.0.88"],
+        status_json = json.dumps(
+            {
+                "Peer": {
+                    "nodekey:abc": {
+                        "HostName": "devops-box",
+                        "DNSName": "devops.tailnet",
+                        "TailscaleIPs": ["100.64.0.88"],
+                    }
                 }
             }
-        })
+        )
         mock_result = MagicMock()
         mock_result.returncode = 0
         mock_result.stdout = status_json
@@ -448,15 +451,17 @@ class TestTailscaleStatusLookup:
     def test_dns_name_match(self, transport_no_tailscale):
         """Expected: returns IP when DNSName matches."""
         t = transport_no_tailscale
-        status_json = json.dumps({
-            "Peer": {
-                "nodekey:xyz": {
-                    "HostName": "some-host",
-                    "DNSName": "opus.tailnet",
-                    "TailscaleIPs": ["100.64.0.99"],
+        status_json = json.dumps(
+            {
+                "Peer": {
+                    "nodekey:xyz": {
+                        "HostName": "some-host",
+                        "DNSName": "opus.tailnet",
+                        "TailscaleIPs": ["100.64.0.99"],
+                    }
                 }
             }
-        })
+        )
         mock_result = MagicMock()
         mock_result.returncode = 0
         mock_result.stdout = status_json
@@ -495,15 +500,17 @@ class TestTailscaleStatusLookup:
     def test_skips_non_100_ips(self, transport_no_tailscale):
         """Expected: only 100.x.x.x IPs are returned (not IPv6)."""
         t = transport_no_tailscale
-        status_json = json.dumps({
-            "Peer": {
-                "nodekey:foo": {
-                    "HostName": "target",
-                    "DNSName": "target.net",
-                    "TailscaleIPs": ["fd7a::1:2", "100.1.2.3"],
+        status_json = json.dumps(
+            {
+                "Peer": {
+                    "nodekey:foo": {
+                        "HostName": "target",
+                        "DNSName": "target.net",
+                        "TailscaleIPs": ["fd7a::1:2", "100.1.2.3"],
+                    }
                 }
             }
-        })
+        )
         mock_result = MagicMock()
         mock_result.returncode = 0
         mock_result.stdout = status_json
@@ -525,7 +532,7 @@ class TestDetectLocalIp:
         mock_result = MagicMock()
         mock_result.returncode = 0
         mock_result.stdout = "100.64.0.1\n"
-        with patch("subprocess.run", return_value=mock_result) as mock_run:
+        with patch("subprocess.run", return_value=mock_result):
             with patch("subprocess.run", return_value=mock_result):
                 t = TailscaleTransport(auto_detect=False)
                 ip = t._detect_local_ip()
@@ -636,15 +643,19 @@ class TestHandleConnection:
         # Simulate recv: header bytes then payload bytes
         mock_conn = MagicMock()
         mock_conn.recv.side_effect = [
-            framed[:HEADER_SIZE],       # length header
-            framed[HEADER_SIZE:],       # payload
+            framed[:HEADER_SIZE],  # length header
+            framed[HEADER_SIZE:],  # payload
             b"",
         ]
 
-        with patch.object(t, "_recv_exact", side_effect=[
-            framed[:HEADER_SIZE],
-            data,
-        ]):
+        with patch.object(
+            t,
+            "_recv_exact",
+            side_effect=[
+                framed[:HEADER_SIZE],
+                data,
+            ],
+        ):
             t._handle_connection(mock_conn, ("100.64.0.99", 12345))
 
         assert not t._inbox.empty()

@@ -24,15 +24,17 @@ def outbox(tmp_path: Path) -> PersistentOutbox:
 
 def _make_envelope_json(envelope_id: str = "test-env-001") -> str:
     """Create a minimal envelope JSON string."""
-    return json.dumps({
-        "skcomm_version": "1.0.0",
-        "envelope_id": envelope_id,
-        "sender": "alice",
-        "recipient": "bob",
-        "payload": {"content": "Hello!", "content_type": "text"},
-        "routing": {"mode": "failover"},
-        "metadata": {},
-    })
+    return json.dumps(
+        {
+            "skcomm_version": "1.0.0",
+            "envelope_id": envelope_id,
+            "sender": "alice",
+            "recipient": "bob",
+            "payload": {"content": "Hello!", "content_type": "text"},
+            "routing": {"mode": "failover"},
+            "metadata": {},
+        }
+    )
 
 
 class TestEnqueue:
@@ -146,8 +148,10 @@ class TestListAndPurge:
         dead_dir = tmp_path / "outbox" / "dead"
         (dead_dir / "env-dead.json").write_text(
             OutboxEntry(
-                envelope_id="env-dead", recipient="bob",
-                envelope_json="{}", attempt_count=10,
+                envelope_id="env-dead",
+                recipient="bob",
+                envelope_json="{}",
+                attempt_count=10,
             ).model_dump_json()
         )
         purged = outbox.purge_dead()
@@ -163,7 +167,8 @@ class TestRequeueDead:
         dead_dir = outbox._dead
         for i in range(2):
             entry = OutboxEntry(
-                envelope_id=f"env-{i}", recipient="bob",
+                envelope_id=f"env-{i}",
+                recipient="bob",
                 envelope_json=_make_envelope_json(f"env-{i}"),
                 attempt_count=10,
             )
@@ -181,7 +186,8 @@ class TestRequeueDead:
         """requeue_dead with ID only requeues that message."""
         for i in range(3):
             entry = OutboxEntry(
-                envelope_id=f"env-{i}", recipient="bob",
+                envelope_id=f"env-{i}",
+                recipient="bob",
                 envelope_json="{}",
             )
             (outbox._dead / f"env-{i}.json").write_text(entry.model_dump_json())
@@ -217,7 +223,9 @@ class TestOutboxEntry:
     def test_defaults(self) -> None:
         """Entry has sensible defaults."""
         entry = OutboxEntry(
-            envelope_id="test", recipient="bob", envelope_json="{}",
+            envelope_id="test",
+            recipient="bob",
+            envelope_json="{}",
         )
         assert entry.attempt_count == 0
         assert entry.max_retries == 10
@@ -226,8 +234,10 @@ class TestOutboxEntry:
     def test_serialization_roundtrip(self) -> None:
         """Entry survives JSON roundtrip."""
         entry = OutboxEntry(
-            envelope_id="test", recipient="bob",
-            envelope_json=_make_envelope_json(), attempt_count=3,
+            envelope_id="test",
+            recipient="bob",
+            envelope_json=_make_envelope_json(),
+            attempt_count=3,
             last_error="timeout",
         )
         data = entry.model_dump_json()

@@ -44,7 +44,7 @@ import logging
 import threading
 from typing import Any, Optional
 
-from .pubsub import PubSubBroker, PubSubMessage, _Subscription, _pattern_to_regex
+from .pubsub import PubSubBroker, PubSubMessage, _pattern_to_regex
 
 logger = logging.getLogger("skcomm.pubsub_transport")
 
@@ -103,9 +103,7 @@ class TransportBridge:
         self._lock = threading.Lock()
         self._running = False
         # Pre-compile export pattern regexes for fast matching
-        self._export_regexes = [
-            _pattern_to_regex(p) for p in self._export_patterns
-        ]
+        self._export_regexes = [_pattern_to_regex(p) for p in self._export_patterns]
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -177,13 +175,9 @@ class TransportBridge:
                     message=content,
                     message_type=MessageType.COMMAND,
                 )
-                logger.debug(
-                    "TransportBridge: forwarded %r to %r", msg.topic, agent
-                )
+                logger.debug("TransportBridge: forwarded %r to %r", msg.topic, agent)
             except Exception as exc:
-                logger.warning(
-                    "TransportBridge: forward to %r failed: %s", agent, exc
-                )
+                logger.warning("TransportBridge: forward to %r failed: %s", agent, exc)
 
     # ------------------------------------------------------------------
     # Inbound: remote → local broker
@@ -213,9 +207,7 @@ class TransportBridge:
 
             msg = PubSubMessage.model_validate(data)
             # Prefix sender so consumers know this came from a remote node
-            msg = msg.model_copy(
-                update={"sender": f"{self._inject_sender_prefix}{msg.sender}"}
-            )
+            msg = msg.model_copy(update={"sender": f"{self._inject_sender_prefix}{msg.sender}"})
 
             self._broker.publish(
                 topic=msg.topic,

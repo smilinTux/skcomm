@@ -3,9 +3,6 @@
 from __future__ import annotations
 
 import json
-import queue
-import threading
-import time
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -18,7 +15,6 @@ from skcomm.transports.websocket import (
     WebSocketTransport,
     create_transport,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers

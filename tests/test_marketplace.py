@@ -4,14 +4,12 @@ from __future__ import annotations
 
 import json
 from datetime import datetime, timezone
-from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 import yaml
 
 from skcomm.marketplace import (
-    DEFAULT_RELAYS,
     NOSTR_SKILL_KIND,
     NOSTR_SKILL_PREFIX,
     SkillManifest,
@@ -65,12 +63,16 @@ class TestSkillManifest:
 
     def test_from_yaml_file(self, tmp_path):
         path = tmp_path / "skill.yml"
-        path.write_text(yaml.dump({
-            "name": "from-file",
-            "title": "From File",
-            "version": "2.0.0",
-            "tags": ["file"],
-        }))
+        path.write_text(
+            yaml.dump(
+                {
+                    "name": "from-file",
+                    "title": "From File",
+                    "version": "2.0.0",
+                    "tags": ["file"],
+                }
+            )
+        )
         m = SkillManifest.from_yaml_file(path)
         assert m.name == "from-file"
         assert m.version == "2.0.0"

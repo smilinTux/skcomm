@@ -4,9 +4,6 @@ from __future__ import annotations
 
 import json
 import uuid
-from pathlib import Path
-
-import pytest
 
 from skcomm.transports.file import FileTransport, create_transport
 
@@ -204,9 +201,7 @@ class TestFileTransportSendReceive:
         )
 
         for i in range(5):
-            (inbox / f"msg-{i}.skc.json").write_bytes(
-                _make_envelope_bytes(content=f"msg {i}")
-            )
+            (inbox / f"msg-{i}.skc.json").write_bytes(_make_envelope_bytes(content=f"msg {i}"))
 
         received = t.receive()
         assert len(received) == 5

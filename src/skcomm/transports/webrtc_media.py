@@ -68,12 +68,8 @@ from .video_track import MuseTalkVideoTrack
 logger = logging.getLogger("skcomm.transports.webrtc_media")
 
 # Defaults
-DEFAULT_SIGNALING_URL = os.environ.get(
-    "SKCOMM_SIGNALING_URL", "wss://localhost:9384/webrtc/ws"
-)
-DEFAULT_TURN_SERVER = os.environ.get(
-    "SKCOMM_TURN_SERVER", "turn:turn.skworld.io:3478"
-)
+DEFAULT_SIGNALING_URL = os.environ.get("SKCOMM_SIGNALING_URL", "wss://localhost:9384/webrtc/ws")
+DEFAULT_TURN_SERVER = os.environ.get("SKCOMM_TURN_SERVER", "turn:turn.skworld.io:3478")
 DEFAULT_STUN_SERVERS = ["stun:stun.l.google.com:19302"]
 
 # Video settings
@@ -82,8 +78,8 @@ DEFAULT_WIDTH = 1280
 DEFAULT_HEIGHT = 720
 
 # Queue sizes
-VIDEO_QUEUE_SIZE = 3    # Small: latest-wins, minimize latency
-AUDIO_QUEUE_SIZE = 50   # Larger: audio gaps are more noticeable
+VIDEO_QUEUE_SIZE = 3  # Small: latest-wins, minimize latency
+AUDIO_QUEUE_SIZE = 50  # Larger: audio gaps are more noticeable
 
 
 class FaceTimeSession:
@@ -163,8 +159,8 @@ class FaceTimeSession:
         self._audio_track: Optional[TTSAudioTrack] = None
 
         # WebRTC objects (created in start())
-        self._pc = None          # RTCPeerConnection
-        self._channel = None     # RTCDataChannel
+        self._pc = None  # RTCPeerConnection
+        self._channel = None  # RTCDataChannel
         self._signaling_ws = None  # WebSocket to signaling broker
 
         # Event for connection established
@@ -180,7 +176,6 @@ class FaceTimeSession:
             RTCConfiguration,
             RTCIceServer,
             RTCPeerConnection,
-            RTCRtpSender,
         )
 
         logger.info("Starting FaceTime session for agent '%s'", self.agent_name)
@@ -221,9 +216,7 @@ class FaceTimeSession:
         await self._set_bandwidth(audio_sender, max_bitrate=48_000)
 
         # Create data channel for captions and control
-        self._channel = self._pc.createDataChannel(
-            "skcomm", ordered=True
-        )
+        self._channel = self._pc.createDataChannel("skcomm", ordered=True)
         self._channel.on("open", self._on_channel_open)
         self._channel.on("message", self._on_channel_message)
 
@@ -312,11 +305,15 @@ class FaceTimeSession:
             role: "assistant" or "user".
         """
         if self._channel and self._channel.readyState == "open":
-            self._channel.send(json.dumps({
-                "type": "transcript",
-                "role": role,
-                "text": text,
-            }))
+            self._channel.send(
+                json.dumps(
+                    {
+                        "type": "transcript",
+                        "role": role,
+                        "text": text,
+                    }
+                )
+            )
 
     async def send_emotion(self, emotion: str, intensity: float) -> None:
         """Send an emotion state update via the data channel.
@@ -326,11 +323,15 @@ class FaceTimeSession:
             intensity: Emotion intensity 0.0 to 1.0.
         """
         if self._channel and self._channel.readyState == "open":
-            self._channel.send(json.dumps({
-                "type": "emotion",
-                "emotion": emotion,
-                "intensity": intensity,
-            }))
+            self._channel.send(
+                json.dumps(
+                    {
+                        "type": "emotion",
+                        "emotion": emotion,
+                        "intensity": intensity,
+                    }
+                )
+            )
 
     def interrupt(self) -> None:
         """Interrupt current speech. Flushes audio buffer immediately."""
@@ -400,7 +401,6 @@ class FaceTimeSession:
 
     async def _create_and_send_offer(self, peer_id: str) -> None:
         """Create an SDP offer and send it to the browser via signaling."""
-        from aiortc import RTCSessionDescription
 
         self.peer_id = peer_id
 
@@ -421,11 +421,15 @@ class FaceTimeSession:
         # TODO: Sign SDP with CapAuth PGP (same as existing WebRTCTransport)
         # signal_data = self._sign_sdp(signal_data)
 
-        await self._signaling_ws.send(json.dumps({
-            "type": "signal",
-            "to": peer_id,
-            "data": signal_data,
-        }))
+        await self._signaling_ws.send(
+            json.dumps(
+                {
+                    "type": "signal",
+                    "to": peer_id,
+                    "data": signal_data,
+                }
+            )
+        )
 
         logger.info("SDP offer sent to %s", peer_id[:16])
 
@@ -521,11 +525,13 @@ class FaceTimeSession:
         if self._turn_server:
             if self._turn_secret:
                 username, credential = self._derive_turn_credentials()
-                servers.append(RTCIceServer(
-                    urls=self._turn_server,
-                    username=username,
-                    credential=credential,
-                ))
+                servers.append(
+                    RTCIceServer(
+                        urls=self._turn_server,
+                        username=username,
+                        credential=credential,
+                    )
+                )
             else:
                 logger.warning(
                     "TURN server configured but no secret provided. "
@@ -569,8 +575,7 @@ class FaceTimeSession:
                 others = [c for c in capabilities.codecs if "H264" not in c.mimeType]
                 if h264:
                     transceiver = next(
-                        (t for t in self._pc.getTransceivers()
-                         if t.sender == sender),
+                        (t for t in self._pc.getTransceivers() if t.sender == sender),
                         None,
                     )
                     if transceiver:
@@ -614,6 +619,7 @@ class FaceTimeSession:
 
         try:
             import cv2
+
             img = cv2.imread(str(path))
             if img is None:
                 logger.warning("Failed to read portrait: %s", path)
@@ -652,9 +658,7 @@ class FaceTimeSessionManager:
         self._signaling_url = signaling_url
         self._turn_server = turn_server
         self._turn_secret = turn_secret
-        self._portraits_base = portraits_base or str(
-            Path.home() / ".skcapstone" / "agents"
-        )
+        self._portraits_base = portraits_base or str(Path.home() / ".skcapstone" / "agents")
         self._sessions: dict[str, FaceTimeSession] = {}
         # GPU semaphore: only one FaceTime session at a time
         self._gpu_lock = asyncio.Semaphore(1)
@@ -676,9 +680,7 @@ class FaceTimeSessionManager:
 
         await self._gpu_lock.acquire()
 
-        portrait_path = str(
-            Path(self._portraits_base) / agent_name / "avatar" / "portrait.png"
-        )
+        portrait_path = str(Path(self._portraits_base) / agent_name / "avatar" / "portrait.png")
 
         session = FaceTimeSession(
             agent_name=agent_name,

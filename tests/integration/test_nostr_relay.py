@@ -25,15 +25,15 @@ from typing import Optional
 
 import pytest
 
+from skcomm.transport import TransportStatus
 from skcomm.transports.nostr import (
-    DEFAULT_RELAYS,
     KIND_GIFT_WRAP,
     NOSTR_AVAILABLE,
     NostrTransport,
     _make_event,
     _pubkey_of,
-    _query_relay,
     _publish_to_relay,
+    _query_relay,
     _random_secret,
     _sign_event,
     nip44_conversation_key,
@@ -42,7 +42,6 @@ from skcomm.transports.nostr import (
     unwrap_dm,
     wrap_dm,
 )
-from skcomm.transport import TransportStatus
 
 # ---------------------------------------------------------------------------
 # Test relay configuration
@@ -164,16 +163,18 @@ def receiver_pubkey(receiver_secret: bytes) -> str:
 @pytest.fixture
 def sample_envelope_bytes() -> bytes:
     """Minimal SKComm envelope with a unique ID per test run."""
-    return json.dumps({
-        "skcomm_version": "1.0.0",
-        "envelope_id": f"integ-{int(time.time() * 1000)}",
-        "sender": "jarvis",
-        "recipient": "lumina",
-        "payload": {
-            "content": "Nostr integration test — staycurious",
-            "content_type": "text",
-        },
-    }).encode("utf-8")
+    return json.dumps(
+        {
+            "skcomm_version": "1.0.0",
+            "envelope_id": f"integ-{int(time.time() * 1000)}",
+            "sender": "jarvis",
+            "recipient": "lumina",
+            "payload": {
+                "content": "Nostr integration test — staycurious",
+                "content_type": "text",
+            },
+        }
+    ).encode("utf-8")
 
 
 # ---------------------------------------------------------------------------
@@ -237,7 +238,9 @@ class TestMessageEncoding:
         decoded = base64.b64decode(encoded)
         assert decoded == sample_envelope_bytes
 
-    def test_nip44_encrypt_decrypt(self, sender_secret: bytes, receiver_secret: bytes, receiver_pubkey: str):
+    def test_nip44_encrypt_decrypt(
+        self, sender_secret: bytes, receiver_secret: bytes, receiver_pubkey: str
+    ):
         """NIP-44 encryption is symmetric and reversible."""
         conv_key = nip44_conversation_key(sender_secret, bytes.fromhex(receiver_pubkey))
         plaintext = base64.b64encode(b"sovereign agent payload").decode()
@@ -413,8 +416,7 @@ class TestNostrTransportRoundTrip:
         sender_t = NostrTransport(relays=[live_relay], relay_timeout=RELAY_OP_TIMEOUT)
         result = sender_t.send(sample_envelope_bytes, receiver_pubkey)
         assert result.success, (
-            f"send() failed: {result.error}. "
-            f"Transport={result.transport_name}, relay={live_relay}"
+            f"send() failed: {result.error}. Transport={result.transport_name}, relay={live_relay}"
         )
         assert result.transport_name == "nostr"
         assert result.latency_ms is not None and result.latency_ms > 0
@@ -460,10 +462,7 @@ class TestNostrTransportRoundTrip:
 
         # Find our specific envelope by ID.
         sent_id = json.loads(sample_envelope_bytes)["envelope_id"]
-        matched = [
-            m for m in received
-            if json.loads(m).get("envelope_id") == sent_id
-        ]
+        matched = [m for m in received if json.loads(m).get("envelope_id") == sent_id]
         assert len(matched) == 1, (
             f"Sent envelope_id={sent_id!r} not found among {len(received)} received messages."
         )
@@ -509,9 +508,7 @@ class TestNostrTransportRoundTrip:
         second_ids = {json.loads(m).get("envelope_id") for m in second_batch}
 
         assert sent_id in first_ids, "Envelope not received in first batch"
-        assert sent_id not in second_ids, (
-            "Envelope was delivered twice — deduplication is broken"
-        )
+        assert sent_id not in second_ids, "Envelope was delivered twice — deduplication is broken"
 
     @pytest.mark.xfail(
         strict=False,
@@ -549,6 +546,5 @@ class TestNostrTransportRoundTrip:
         result = sender_t.send(sample_envelope_bytes, receiver_pubkey)
         # Should succeed via a live relay after the dead one fails fast.
         assert result.success, (
-            f"Expected fallback after {dead_relay} failed, "
-            f"but all relays rejected: {result.error}"
+            f"Expected fallback after {dead_relay} failed, but all relays rejected: {result.error}"
         )

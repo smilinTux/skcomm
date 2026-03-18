@@ -59,8 +59,8 @@ def fetch_peer_from_did(
     Raises:
         KeyExchangeError: If fetch or parsing fails.
     """
-    import urllib.request
     import urllib.error
+    import urllib.request
 
     if name_or_url.startswith("http://") or name_or_url.startswith("https://"):
         url = name_or_url
@@ -81,7 +81,9 @@ def fetch_peer_from_did(
     logger.info("Fetching DID from %s", url)
 
     try:
-        req = urllib.request.Request(url, headers={"Accept": "application/did+json, application/json"})
+        req = urllib.request.Request(
+            url, headers={"Accept": "application/did+json, application/json"}
+        )
         with urllib.request.urlopen(req, timeout=15) as resp:
             did_doc = json.loads(resp.read().decode("utf-8"))
     except urllib.error.HTTPError as exc:
@@ -124,6 +126,7 @@ def _slug_from_url(url: str) -> str:
             return parts[i + 1]
     # Fallback: use the hostname
     from urllib.parse import urlparse
+
     parsed = urlparse(url)
     return parsed.hostname or "unknown"
 
@@ -333,10 +336,12 @@ def import_peer_bundle(
     transports: list[PeerTransport] = []
     for t in bundle.get("transports", []):
         if isinstance(t, dict) and t.get("transport"):
-            transports.append(PeerTransport(
-                transport=t["transport"],
-                settings=t.get("settings", {}),
-            ))
+            transports.append(
+                PeerTransport(
+                    transport=t["transport"],
+                    settings=t.get("settings", {}),
+                )
+            )
 
     if not transports:
         # Default transports
@@ -486,16 +491,19 @@ def _get_local_transports() -> list[dict]:
 
     try:
         import yaml
+
         config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
         skcomm = config.get("skcomm", config)
         transports_cfg = skcomm.get("transports", {})
         result = []
         for name, tcfg in transports_cfg.items():
             if isinstance(tcfg, dict) and tcfg.get("enabled", True):
-                result.append({
-                    "transport": name,
-                    "settings": tcfg.get("settings", {}),
-                })
+                result.append(
+                    {
+                        "transport": name,
+                        "settings": tcfg.get("settings", {}),
+                    }
+                )
         return result
     except Exception:
         return []

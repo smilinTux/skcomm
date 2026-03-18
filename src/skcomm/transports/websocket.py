@@ -26,7 +26,6 @@ import logging
 import queue
 import threading
 import time
-from datetime import datetime, timezone
 from typing import Optional
 
 from ..transport import (
@@ -40,11 +39,11 @@ from ..transport import (
 logger = logging.getLogger("skcomm.transports.websocket")
 
 DEFAULT_URL = "ws://localhost:8765/skcomm/ws"
-HEARTBEAT_INTERVAL = 30     # seconds between heartbeat pings
-RECV_TIMEOUT = 1.0          # seconds for recv timeout (to check _running)
-RECONNECT_DELAY_MIN = 2     # seconds initial backoff
-RECONNECT_DELAY_MAX = 60    # seconds maximum backoff
-CONNECT_SETTLE_TIME = 0.2   # seconds to wait after starting recv thread
+HEARTBEAT_INTERVAL = 30  # seconds between heartbeat pings
+RECV_TIMEOUT = 1.0  # seconds for recv timeout (to check _running)
+RECONNECT_DELAY_MIN = 2  # seconds initial backoff
+RECONNECT_DELAY_MAX = 60  # seconds maximum backoff
+CONNECT_SETTLE_TIME = 0.2  # seconds to wait after starting recv thread
 
 
 class WebSocketTransport(Transport):
@@ -90,15 +89,15 @@ class WebSocketTransport(Transport):
         self.priority = priority
         self._heartbeat_interval = heartbeat_interval
 
-        self._ws = None                             # websockets ClientConnection
+        self._ws = None  # websockets ClientConnection
         self._connected = False
         self._running = False
         self._connect_error: Optional[str] = None
         self._reconnect_count = 0
         self._last_ping: Optional[float] = None
 
-        self._send_lock = threading.Lock()          # Serialises concurrent sends
-        self._conn_lock = threading.Lock()          # Protects _ws reference
+        self._send_lock = threading.Lock()  # Serialises concurrent sends
+        self._conn_lock = threading.Lock()  # Protects _ws reference
         self._inbox: queue.Queue[bytes] = queue.Queue(maxsize=10000)
         self._recv_thread: Optional[threading.Thread] = None
 
@@ -376,9 +375,7 @@ class WebSocketTransport(Transport):
         try:
             import websockets.sync.client as ws_sync
         except ImportError:
-            self._connect_error = (
-                "websockets package not installed — pip install 'skcomm[nostr]'"
-            )
+            self._connect_error = "websockets package not installed — pip install 'skcomm[nostr]'"
             logger.error(self._connect_error)
             self._running = False
             return

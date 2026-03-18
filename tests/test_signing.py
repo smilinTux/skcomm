@@ -26,8 +26,12 @@ def _keygen(name: str) -> tuple[str, str]:
     """Generate a test PGP keypair."""
     key = pgpy.PGPKey.new(PubKeyAlgorithm.RSAEncryptOrSign, 2048)
     uid = pgpy.PGPUID.new(name, email=f"{name.lower()}@test.io")
-    key.add_uid(uid, usage={KeyFlags.Sign, KeyFlags.Certify},
-                hashes=[HashAlgorithm.SHA256], ciphers=[SymmetricKeyAlgorithm.AES256])
+    key.add_uid(
+        uid,
+        usage={KeyFlags.Sign, KeyFlags.Certify},
+        hashes=[HashAlgorithm.SHA256],
+        ciphers=[SymmetricKeyAlgorithm.AES256],
+    )
     key.protect(PASSPHRASE, SymmetricKeyAlgorithm.AES256, HashAlgorithm.SHA256)
     return str(key), str(key.pubkey)
 
@@ -74,7 +78,9 @@ class TestEnvelopeSigner:
     """Tests for signing envelopes."""
 
     def test_sign_produces_signature(
-        self, signer: EnvelopeSigner, envelope: MessageEnvelope,
+        self,
+        signer: EnvelopeSigner,
+        envelope: MessageEnvelope,
     ) -> None:
         """Happy path: signing produces a non-empty signature."""
         signed = signer.sign(envelope)
@@ -88,7 +94,9 @@ class TestEnvelopeSigner:
         assert len(signer.fingerprint) == 40
 
     def test_signed_envelope_serialization(
-        self, signer: EnvelopeSigner, envelope: MessageEnvelope,
+        self,
+        signer: EnvelopeSigner,
+        envelope: MessageEnvelope,
     ) -> None:
         """SignedEnvelope survives bytes roundtrip."""
         signed = signer.sign(envelope)
@@ -103,7 +111,9 @@ class TestEnvelopeVerifier:
     """Tests for verifying signed envelopes."""
 
     def test_verify_valid_signature(
-        self, signer: EnvelopeSigner, verifier: EnvelopeVerifier,
+        self,
+        signer: EnvelopeSigner,
+        verifier: EnvelopeVerifier,
         envelope: MessageEnvelope,
     ) -> None:
         """Happy path: valid signature verifies."""
@@ -112,7 +122,9 @@ class TestEnvelopeVerifier:
         assert result.valid is True
         assert "valid" in result.reason.lower()
 
-    def test_verify_unsigned_fails(self, verifier: EnvelopeVerifier, envelope: MessageEnvelope) -> None:
+    def test_verify_unsigned_fails(
+        self, verifier: EnvelopeVerifier, envelope: MessageEnvelope
+    ) -> None:
         """Unsigned envelope fails verification."""
         unsigned = SignedEnvelope(envelope=envelope)
         result = verifier.verify(unsigned)
@@ -120,7 +132,9 @@ class TestEnvelopeVerifier:
         assert "No signature" in result.reason
 
     def test_verify_unknown_signer(
-        self, signer: EnvelopeSigner, envelope: MessageEnvelope,
+        self,
+        signer: EnvelopeSigner,
+        envelope: MessageEnvelope,
     ) -> None:
         """Signature from unknown signer fails."""
         signed = signer.sign(envelope)
@@ -130,13 +144,16 @@ class TestEnvelopeVerifier:
         assert "Unknown signer" in result.reason
 
     def test_verify_tampered_envelope(
-        self, signer: EnvelopeSigner, verifier: EnvelopeVerifier,
+        self,
+        signer: EnvelopeSigner,
+        verifier: EnvelopeVerifier,
         envelope: MessageEnvelope,
     ) -> None:
         """Tampered envelope fails hash check."""
         signed = signer.sign(envelope)
         signed.envelope = MessageEnvelope(
-            sender="alice", recipient="bob",
+            sender="alice",
+            recipient="bob",
             payload=MessagePayload(content="TAMPERED!"),
         )
         result = verifier.verify(signed)
@@ -144,7 +161,9 @@ class TestEnvelopeVerifier:
         assert "tampered" in result.reason.lower()
 
     def test_verify_wrong_key(
-        self, signer: EnvelopeSigner, bob_keys: tuple[str, str],
+        self,
+        signer: EnvelopeSigner,
+        bob_keys: tuple[str, str],
         envelope: MessageEnvelope,
     ) -> None:
         """Signature verified against wrong key fails."""

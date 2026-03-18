@@ -5,7 +5,7 @@ from unittest.mock import Mock, patch
 import pytest
 from fastapi.testclient import TestClient
 
-from skcomm.api import app, get_skcomm
+from skcomm.api import app
 from skcomm.models import (
     MessageEnvelope,
     MessageMetadata,
@@ -231,8 +231,10 @@ class TestConversationsEndpoint:
     def test_conversations_placeholder(self, client, monkeypatch, tmp_path):
         """Expected: conversations endpoint returns empty list when no data exists."""
         monkeypatch.setenv("SKCAPSTONE_HOME", str(tmp_path))
-        with patch("skcomm.api.PersistentOutbox") as mock_outbox, \
-             patch("skcomm.api._get_chat_history") as mock_chat_hist:
+        with (
+            patch("skcomm.api.PersistentOutbox") as mock_outbox,
+            patch("skcomm.api._get_chat_history") as mock_chat_hist,
+        ):
             mock_outbox.return_value.list_pending.return_value = []
             mock_outbox.return_value.list_dead.return_value = []
             mock_chat_hist.return_value = None
@@ -284,10 +286,14 @@ class TestPeersEndpoint:
         with monkeypatch.context() as m:
             from skcomm.discovery import PeerStore as PS
 
-            m.setattr(PS, "__init__", lambda self, peers_dir=None: (
-                setattr(self, "_dir", tmp_path / "peers") or
-                (tmp_path / "peers").mkdir(parents=True, exist_ok=True)
-            ))
+            m.setattr(
+                PS,
+                "__init__",
+                lambda self, peers_dir=None: (
+                    setattr(self, "_dir", tmp_path / "peers")
+                    or (tmp_path / "peers").mkdir(parents=True, exist_ok=True)
+                ),
+            )
 
             response = client.get("/api/v1/peers")
             assert response.status_code == 200
@@ -378,7 +384,9 @@ class TestPeersEndpoint:
         monkeypatch.setattr(PeerStore, "__init__", patched_init)
 
         # Add a peer first
-        client.post("/api/v1/peers", json={"name": "hal", "address": "/comms", "transport": "syncthing"})
+        client.post(
+            "/api/v1/peers", json={"name": "hal", "address": "/comms", "transport": "syncthing"}
+        )
 
         response = client.get("/api/v1/peers")
         assert response.status_code == 200
@@ -392,8 +400,10 @@ class TestPresenceEndpoint:
 
     def test_presence_update(self, client, mock_skcomm):
         """Expected: presence update returns confirmation."""
-        with patch("skcomm.api.PeerStore") as mock_peer_store, \
-             patch("skcomm.api.HeartbeatPublisher") as mock_hb:
+        with (
+            patch("skcomm.api.PeerStore") as mock_peer_store,
+            patch("skcomm.api.HeartbeatPublisher") as mock_hb,
+        ):
             mock_peer_store.return_value.list_all.return_value = []
             mock_hb.return_value.publish.return_value = "/tmp/test.json"
             response = client.post(
@@ -413,8 +423,10 @@ class TestPresenceEndpoint:
 
     def test_presence_update_without_message(self, client, mock_skcomm):
         """Expected: presence update works without optional message."""
-        with patch("skcomm.api.PeerStore") as mock_peer_store, \
-             patch("skcomm.api.HeartbeatPublisher") as mock_hb:
+        with (
+            patch("skcomm.api.PeerStore") as mock_peer_store,
+            patch("skcomm.api.HeartbeatPublisher") as mock_hb,
+        ):
             mock_peer_store.return_value.list_all.return_value = []
             mock_hb.return_value.publish.return_value = "/tmp/test.json"
             response = client.post(

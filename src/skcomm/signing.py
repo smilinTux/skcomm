@@ -23,7 +23,7 @@ import hashlib
 import json
 import logging
 from datetime import datetime, timezone
-from typing import Any, Optional
+from typing import Optional
 
 from pydantic import BaseModel, Field
 
@@ -137,7 +137,11 @@ class EnvelopeSigner:
 
         pgp_message = pgpy.PGPMessage.new(canonical.encode("utf-8"), cleartext=False)
 
-        _ctx = self._key.unlock(self._passphrase) if self._key.is_protected else contextlib.nullcontext()
+        _ctx = (
+            self._key.unlock(self._passphrase)
+            if self._key.is_protected
+            else contextlib.nullcontext()
+        )
         with _ctx:
             sig = self._key.sign(pgp_message)
 
@@ -199,7 +203,8 @@ class EnvelopeVerifier:
         """
         if not signed.is_signed:
             return VerificationResult(
-                valid=False, reason="No signature present",
+                valid=False,
+                reason="No signature present",
             )
 
         pub_armor = self._find_key(signed)

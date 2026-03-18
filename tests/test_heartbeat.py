@@ -7,21 +7,17 @@ import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-import pytest
-
 from skcomm.heartbeat import (
     HEARTBEAT_SUFFIX,
     HeartbeatConfig,
     HeartbeatMonitor,
     HeartbeatPayload,
+    HeartbeatPublisher,
     NodeHeartbeat,
     NodeHeartbeatMonitor,
     NodeResources,
-    HeartbeatPublisher,
-    PeerHeartbeat,
     PeerLiveness,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -201,8 +197,10 @@ class TestHeartbeatClassification:
         hb_dir = tmp_path / "heartbeats"
         _write_v1_heartbeat(hb_dir, "lumina", age_seconds=50)
         monitor = HeartbeatMonitor(
-            "opus", comms_root=tmp_path,
-            alive_timeout=30, stale_timeout=60,
+            "opus",
+            comms_root=tmp_path,
+            alive_timeout=30,
+            stale_timeout=60,
         )
         status = monitor.peer_status("lumina")
         assert status.status == PeerLiveness.STALE
@@ -594,7 +592,9 @@ class TestNodeHeartbeatMonitor:
     def test_find_capable_excludes_stale_nodes(self, tmp_path):
         """find_capable should not return nodes past their TTL."""
         hb_dir = tmp_path / "heartbeats"
-        _write_v2_heartbeat(hb_dir, "old-gpu", age_seconds=300, ttl_seconds=60, capabilities=["gpu"])
+        _write_v2_heartbeat(
+            hb_dir, "old-gpu", age_seconds=300, ttl_seconds=60, capabilities=["gpu"]
+        )
         monitor = NodeHeartbeatMonitor(sync_root=tmp_path)
         result = monitor.find_capable("gpu")
         assert result == []

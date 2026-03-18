@@ -43,6 +43,7 @@ _DID_CONTENT_TYPE = "application/did+json"
 
 try:
     from .capauth_validator import CapAuthValidator as _CapAuthValidator
+
     _validator: Any = _CapAuthValidator()
 except Exception:
     _validator = None
@@ -111,6 +112,7 @@ def _did_json(doc: dict) -> JSONResponse:
 def _load_generator() -> Any:
     """Load a DIDDocumentGenerator from the local CapAuth profile."""
     from capauth.did import DIDDocumentGenerator  # type: ignore[import]
+
     return DIDDocumentGenerator.from_profile()
 
 
@@ -127,6 +129,7 @@ async def well_known_did() -> JSONResponse:
     """
     try:
         from capauth.did import DIDTier  # type: ignore[import]
+
         gen = _load_generator()
         hostname, tailnet = _tailnet_params()
         doc = gen.generate(DIDTier.WEB_MESH, tailnet_hostname=hostname, tailnet_name=tailnet)
@@ -145,11 +148,13 @@ async def did_key_endpoint() -> JSONResponse:
     try:
         gen = _load_generator()
         ctx = gen._ctx
-        return JSONResponse({
-            "did_key": ctx.did_key_id,
-            "fingerprint": ctx.fingerprint,
-            "name": ctx.name,
-        })
+        return JSONResponse(
+            {
+                "did_key": ctx.did_key_id,
+                "fingerprint": ctx.fingerprint,
+                "name": ctx.name,
+            }
+        )
     except Exception as exc:
         logger.warning("/api/v1/did/key error: %s", exc)
         raise HTTPException(status_code=503, detail=f"DID key unavailable: {exc}")
@@ -163,16 +168,19 @@ async def did_document_all(fingerprint: str = Depends(_require_capauth)) -> JSON
     """
     try:
         from capauth.did import DIDTier  # type: ignore[import]
+
         gen = _load_generator()
         hostname, tailnet = _tailnet_params()
         docs = gen.generate_all(tailnet_hostname=hostname, tailnet_name=tailnet)
-        return JSONResponse({
-            "key": docs[DIDTier.KEY],
-            "mesh": docs[DIDTier.WEB_MESH],
-            "public": docs[DIDTier.WEB_PUBLIC],
-            "did_key": gen._ctx.did_key_id,
-            "fingerprint": gen._ctx.fingerprint,
-        })
+        return JSONResponse(
+            {
+                "key": docs[DIDTier.KEY],
+                "mesh": docs[DIDTier.WEB_MESH],
+                "public": docs[DIDTier.WEB_PUBLIC],
+                "did_key": gen._ctx.did_key_id,
+                "fingerprint": gen._ctx.fingerprint,
+            }
+        )
     except Exception as exc:
         logger.warning("/api/v1/did/document error: %s", exc)
         raise HTTPException(status_code=503, detail=f"DID document unavailable: {exc}")
@@ -206,6 +214,7 @@ async def did_peer(name: str, fingerprint: str = Depends(_require_capauth)) -> J
                     _pgp_armor_to_rsa_numbers,
                     _rsa_numbers_to_der,
                 )
+
                 n, e = _pgp_armor_to_rsa_numbers(pub_armor)
                 did_key = _compute_did_key(_rsa_numbers_to_der(n, e))
                 # Cache to disk
@@ -214,13 +223,15 @@ async def did_peer(name: str, fingerprint: str = Depends(_require_capauth)) -> J
             except Exception as exc:
                 logger.debug("Could not compute did:key for peer %s: %s", name, exc)
 
-    return JSONResponse({
-        "name": name,
-        "did_key": did_key,
-        "did_web": peer_data.get("did_web"),
-        "fingerprint": peer_data.get("fingerprint"),
-        "peer_file": str(peer_file),
-    })
+    return JSONResponse(
+        {
+            "name": name,
+            "did_key": did_key,
+            "did_web": peer_data.get("did_web"),
+            "fingerprint": peer_data.get("fingerprint"),
+            "peer_file": str(peer_file),
+        }
+    )
 
 
 class _VerifyRequest(BaseModel):
@@ -247,12 +258,14 @@ async def did_verify(req: _VerifyRequest) -> JSONResponse:
         verified = True
         detail = "did:web structural validation passed"
 
-    return JSONResponse({
-        "did": req.did,
-        "challenge": req.challenge,
-        "verified": verified,
-        "detail": detail,
-    })
+    return JSONResponse(
+        {
+            "did": req.did,
+            "challenge": req.challenge,
+            "verified": verified,
+            "detail": detail,
+        }
+    )
 
 
 @did_router.post("/api/v1/did/publish")
@@ -269,6 +282,7 @@ async def did_publish(fingerprint: str = Depends(_require_capauth)) -> JSONRespo
     """
     try:
         from capauth.did import DIDTier  # type: ignore[import]
+
         gen = _load_generator()
         hostname, tailnet = _tailnet_params()
         docs = gen.generate_all(tailnet_hostname=hostname, tailnet_name=tailnet)
@@ -293,13 +307,15 @@ async def did_publish(fingerprint: str = Depends(_require_capauth)) -> JSONRespo
         _write(did_dir / "public.json", json.dumps(docs[DIDTier.WEB_PUBLIC], indent=2))
         _write(did_dir / "did_key.txt", gen._ctx.did_key_id)
 
-        return JSONResponse({
-            "published": not errors,
-            "did_key": gen._ctx.did_key_id,
-            "fingerprint": gen._ctx.fingerprint,
-            "written": written,
-            "errors": errors,
-        })
+        return JSONResponse(
+            {
+                "published": not errors,
+                "did_key": gen._ctx.did_key_id,
+                "fingerprint": gen._ctx.fingerprint,
+                "written": written,
+                "errors": errors,
+            }
+        )
     except Exception as exc:
         logger.error("DID publish failed: %s", exc)
         raise HTTPException(status_code=500, detail=f"DID publish failed: {exc}")

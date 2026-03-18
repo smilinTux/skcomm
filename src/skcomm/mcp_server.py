@@ -337,8 +337,7 @@ async def _handle_send_message(args: dict) -> list[TextContent]:
         )
     except httpx.ConnectError:
         return _error_response(
-            f"Cannot reach SKComm daemon at {_api_base()}. "
-            "Is it running? Start with: skcomm serve"
+            f"Cannot reach SKComm daemon at {_api_base()}. Is it running? Start with: skcomm serve"
         )
     except httpx.HTTPStatusError as exc:
         return _error_response(f"SKComm API error {exc.response.status_code}: {exc.response.text}")
@@ -360,8 +359,7 @@ async def _handle_receive_messages(args: dict) -> list[TextContent]:
         envelopes: list = await _get("/api/v1/inbox")
     except httpx.ConnectError:
         return _error_response(
-            f"Cannot reach SKComm daemon at {_api_base()}. "
-            "Is it running? Start with: skcomm serve"
+            f"Cannot reach SKComm daemon at {_api_base()}. Is it running? Start with: skcomm serve"
         )
     except httpx.HTTPStatusError as exc:
         return _error_response(f"SKComm API error {exc.response.status_code}: {exc.response.text}")
@@ -403,8 +401,7 @@ async def _handle_get_peers(_args: dict) -> list[TextContent]:
         peers: list = await _get("/api/v1/peers")
     except httpx.ConnectError:
         return _error_response(
-            f"Cannot reach SKComm daemon at {_api_base()}. "
-            "Is it running? Start with: skcomm serve"
+            f"Cannot reach SKComm daemon at {_api_base()}. Is it running? Start with: skcomm serve"
         )
     except httpx.HTTPStatusError as exc:
         return _error_response(f"SKComm API error {exc.response.status_code}: {exc.response.text}")
@@ -439,8 +436,7 @@ async def _handle_get_status(_args: dict) -> list[TextContent]:
             {
                 "daemon": "offline",
                 "error": (
-                    f"Cannot reach SKComm daemon at {_api_base()}. "
-                    "Start with: skcomm serve"
+                    f"Cannot reach SKComm daemon at {_api_base()}. Start with: skcomm serve"
                 ),
             }
         )
@@ -482,8 +478,7 @@ async def _handle_update_presence(args: dict) -> list[TextContent]:
         )
     except httpx.ConnectError:
         return _error_response(
-            f"Cannot reach SKComm daemon at {_api_base()}. "
-            "Is it running? Start with: skcomm serve"
+            f"Cannot reach SKComm daemon at {_api_base()}. Is it running? Start with: skcomm serve"
         )
     except httpx.HTTPStatusError as exc:
         return _error_response(f"SKComm API error {exc.response.status_code}: {exc.response.text}")
