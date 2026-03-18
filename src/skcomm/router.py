@@ -311,7 +311,9 @@ class Router:
         """Increment the consecutive failure counter for a transport.
 
         After ``FAILURE_THRESHOLD`` consecutive failures a warning is
-        logged and the transport enters cooldown.
+        logged and the transport enters cooldown.  Each subsequent failure
+        beyond the threshold is logged at ERROR to ensure repeated
+        breakdowns remain visible.
 
         Args:
             transport_name: Name of the transport that failed.
@@ -327,6 +329,14 @@ class Router:
                 transport_name,
                 FAILURE_THRESHOLD,
                 COOLDOWN_SECONDS,
+            )
+        elif new_count > FAILURE_THRESHOLD:
+            logger.error(
+                "Transport '%s' has now failed %d consecutive times "
+                "(threshold=%d) — still in cooldown",
+                transport_name,
+                new_count,
+                FAILURE_THRESHOLD,
             )
 
     def _record_success(self, transport_name: str) -> None:
@@ -347,6 +357,11 @@ class Router:
             if result.success:
                 self._record_success(transport.name)
             else:
+                logger.warning(
+                    "Transport '%s' send failed: %s",
+                    transport.name,
+                    result.error or "no error detail",
+                )
                 self._record_failure(transport.name)
             return result
         except TransportError as exc:

@@ -271,9 +271,15 @@ class WebRTCTransport(Transport):
             except Exception as exc:
                 elapsed = (time.monotonic() - start) * 1000
                 logger.warning("WebRTC channel send failed to %s: %s", recipient[:8], exc)
+                # Use identity comparison (``is peer``) rather than a key lookup +
+                # index: between the two steps another thread could remove the peer
+                # (via _cleanup_peer) or replace it with a fresh negotiating stub,
+                # causing either a KeyError or wrongly marking the new stub as
+                # disconnected.  ``peer`` was captured under the lock above, so
+                # comparing by identity is safe and avoids re-indexing the dict.
                 with self._peers_lock:
-                    if recipient in self._peers:
-                        self._peers[recipient].connected = False
+                    if self._peers.get(recipient) is peer:
+                        peer.connected = False
                 return SendResult(
                     success=False,
                     transport_name=self.name,
@@ -541,6 +547,7 @@ class WebRTCTransport(Transport):
             logger.error("aiortc not installed — pip install 'skcomm[webrtc]'")
             return
 
+        peer: Optional[PeerConnection] = None
         try:
             peer = await self._create_peer_connection(peer_id)
 
@@ -564,9 +571,18 @@ class WebRTCTransport(Transport):
         except Exception as exc:
             logger.error("WebRTC: failed to create offer for %s: %s", peer_id[:8], exc)
             with self._peers_lock:
-                peer_obj = self._peers.get(peer_id)
-                if peer_obj:
-                    peer_obj.negotiating = False
+                # Use identity comparison to avoid operating on a replacement
+                # PeerConnection: if the peer was cleaned up and a new stub
+                # inserted between the await above and this handler, we must
+                # not reset the new stub's negotiating flag.  When peer is None
+                # (failure before _create_peer_connection returned), fall back
+                # to resetting whatever entry is present for peer_id.
+                current = self._peers.get(peer_id)
+                if peer is not None:
+                    if current is peer:
+                        peer.negotiating = False
+                elif current is not None:
+                    current.negotiating = False
 
     async def _handle_incoming_signal(self, from_id: str, data: dict) -> None:
         """Handle an incoming SDP offer, SDP answer, or ICE candidate.

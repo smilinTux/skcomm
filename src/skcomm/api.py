@@ -202,6 +202,16 @@ def get_skcomm() -> SKComm:
 # Peer name: alphanumeric, hyphens, underscores. 1-64 chars.
 _PEER_NAME_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$")
 
+# Transport address: valid URI scheme or hostname:port.
+# Allows: scheme://..., hostname:port, plain hostnames/paths.
+_TRANSPORT_URI_RE = re.compile(
+    r"^[a-zA-Z][a-zA-Z0-9+\-.]*://.{1,2000}$"  # URI with scheme
+    r"|^[a-zA-Z0-9._-]{1,253}:[0-9]{1,5}$"      # hostname:port
+    r"|^/[^\x00]{0,4095}$"                        # absolute path (no NUL)
+)
+# Path traversal sequences to reject in any transport address.
+_PATH_TRAVERSAL_RE = re.compile(r"\.\.[/\\]|[/\\]\.\.$|^\.\.$")
+
 
 def _validate_peer_name(name: str) -> str:
     """Validate a peer name for safe use in file paths.
@@ -228,6 +238,39 @@ def _validate_peer_name(name: str) -> str:
             ),
         )
     return name
+
+
+def _validate_transport_address(address: str) -> str:
+    """Validate a transport address to prevent path traversal attacks.
+
+    Rejects addresses containing path traversal sequences (../, ..\, etc.)
+    and ensures the value matches a recognized address format: a URI with a
+    scheme, a hostname:port pair, or an absolute filesystem path.
+
+    Args:
+        address: Raw transport address from the request.
+
+    Returns:
+        The validated address (unchanged).
+
+    Raises:
+        HTTPException: 400 if the address contains traversal sequences or
+            does not match a recognized format.
+    """
+    if _PATH_TRAVERSAL_RE.search(address):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid transport address: path traversal sequences are not allowed",
+        )
+    if not _TRANSPORT_URI_RE.match(address):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "Invalid transport address: must be a URI (scheme://...), "
+                "hostname:port, or absolute path"
+            ),
+        )
+    return address
 
 
 class SendMessageRequest(BaseModel):
@@ -1199,6 +1242,7 @@ async def add_peer(request: PeerAddRequest):
     from .discovery import PeerTransport
 
     _validate_peer_name(request.name)
+    _validate_transport_address(request.address)
 
     try:
         transport_settings: dict = {}
