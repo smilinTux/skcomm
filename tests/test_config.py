@@ -1,6 +1,5 @@
 """Tests for SKComm configuration loading."""
 
-
 from skcomm.config import SKCommConfig, load_config
 from skcomm.models import RoutingMode
 

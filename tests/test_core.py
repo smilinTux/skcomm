@@ -1,6 +1,5 @@
 """Tests for the SKComm main class."""
 
-
 import pytest
 
 from skcomm.config import SKCommConfig
