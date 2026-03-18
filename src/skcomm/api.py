@@ -243,7 +243,7 @@ def _validate_peer_name(name: str) -> str:
 def _validate_transport_address(address: str) -> str:
     """Validate a transport address to prevent path traversal attacks.
 
-    Rejects addresses containing path traversal sequences (../, ..\, etc.)
+    Rejects addresses containing path traversal sequences (../, ..\\, etc.)
     and ensures the value matches a recognized address format: a URI with a
     scheme, a hostname:port pair, or an absolute filesystem path.
 
