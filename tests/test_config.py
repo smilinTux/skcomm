@@ -23,8 +23,7 @@ class TestSKCommConfig:
     def test_config_from_yaml(self, tmp_path):
         """Expected: config loaded from YAML file."""
         config_file = tmp_path / "config.yml"
-        config_file.write_text(
-            """
+        config_file.write_text("""
 skcomm:
   version: "1.0.0"
   identity:
@@ -49,8 +48,7 @@ skcomm:
     ssh:
       enabled: false
       priority: 3
-"""
-        )
+""")
 
         config = SKCommConfig.from_yaml(config_file)
         assert config.identity.name == "opus"
@@ -88,14 +86,12 @@ skcomm:
     def test_config_boolean_transport(self, tmp_path):
         """Edge case: transport config as boolean (shorthand)."""
         config_file = tmp_path / "config.yml"
-        config_file.write_text(
-            """
+        config_file.write_text("""
 skcomm:
   transports:
     file: true
     ssh: false
-"""
-        )
+""")
         config = SKCommConfig.from_yaml(config_file)
         assert config.transports["file"].enabled is True
         assert config.transports["ssh"].enabled is False

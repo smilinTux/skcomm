@@ -199,9 +199,10 @@ class TestRelayConnectivity:
         relays_to_check = list(dict.fromkeys([live_relay] + CANDIDATE_RELAYS))
         t = NostrTransport(relays=relays_to_check, relay_timeout=RELAY_CONNECT_TIMEOUT)
         health = t.health_check()
-        assert health.status in (TransportStatus.AVAILABLE, TransportStatus.DEGRADED), (
-            f"Expected AVAILABLE or DEGRADED, got {health.status}: {health.error}"
-        )
+        assert health.status in (
+            TransportStatus.AVAILABLE,
+            TransportStatus.DEGRADED,
+        ), f"Expected AVAILABLE or DEGRADED, got {health.status}: {health.error}"
         assert health.details["reachable_relays"] >= 1
 
     def test_health_check_latency_measured(self, live_relay: str):
@@ -289,9 +290,9 @@ class TestMessageEncoding:
     ):
         """Outer gift-wrap pubkey must differ from the real sender pubkey (NIP-59)."""
         gift = wrap_dm(sender_secret, sender_pubkey, receiver_pubkey, "test")
-        assert gift["pubkey"] != sender_pubkey, (
-            "Gift-wrap pubkey matches sender — metadata is leaking!"
-        )
+        assert (
+            gift["pubkey"] != sender_pubkey
+        ), "Gift-wrap pubkey matches sender — metadata is leaking!"
 
     def test_event_id_is_sha256_of_canonical_form(
         self,
@@ -415,9 +416,9 @@ class TestNostrTransportRoundTrip:
         """NostrTransport.send() returns success when a relay accepts the event."""
         sender_t = NostrTransport(relays=[live_relay], relay_timeout=RELAY_OP_TIMEOUT)
         result = sender_t.send(sample_envelope_bytes, receiver_pubkey)
-        assert result.success, (
-            f"send() failed: {result.error}. Transport={result.transport_name}, relay={live_relay}"
-        )
+        assert (
+            result.success
+        ), f"send() failed: {result.error}. Transport={result.transport_name}, relay={live_relay}"
         assert result.transport_name == "nostr"
         assert result.latency_ms is not None and result.latency_ms > 0
 
@@ -463,9 +464,9 @@ class TestNostrTransportRoundTrip:
         # Find our specific envelope by ID.
         sent_id = json.loads(sample_envelope_bytes)["envelope_id"]
         matched = [m for m in received if json.loads(m).get("envelope_id") == sent_id]
-        assert len(matched) == 1, (
-            f"Sent envelope_id={sent_id!r} not found among {len(received)} received messages."
-        )
+        assert (
+            len(matched) == 1
+        ), f"Sent envelope_id={sent_id!r} not found among {len(received)} received messages."
 
         recovered = json.loads(matched[0])
         assert recovered["sender"] == "jarvis"
@@ -545,6 +546,6 @@ class TestNostrTransportRoundTrip:
         )
         result = sender_t.send(sample_envelope_bytes, receiver_pubkey)
         # Should succeed via a live relay after the dead one fails fast.
-        assert result.success, (
-            f"Expected fallback after {dead_relay} failed, but all relays rejected: {result.error}"
-        )
+        assert (
+            result.success
+        ), f"Expected fallback after {dead_relay} failed, but all relays rejected: {result.error}"

@@ -178,9 +178,9 @@ async def test_configure_connects_to_relay(relay: MockNostrRelay) -> None:
     with patch("skcomm.transports.nostr._ws_connect", side_effect=relay):
         health = t.health_check()
 
-    assert configured_url in relay.connected_urls, (
-        "health_check() must connect to the URL set by configure()"
-    )
+    assert (
+        configured_url in relay.connected_urls
+    ), "health_check() must connect to the URL set by configure()"
     assert health.status == TransportStatus.AVAILABLE
 
 
@@ -206,9 +206,9 @@ async def test_send_publishes_signed_event(
     assert len(relay.published_events) == 1, "Exactly one event must reach the relay"
 
     event = relay.published_events[0]
-    assert event["kind"] == KIND_GIFT_WRAP, (
-        f"Expected kind {KIND_GIFT_WRAP} (gift wrap), got {event['kind']}"
-    )
+    assert (
+        event["kind"] == KIND_GIFT_WRAP
+    ), f"Expected kind {KIND_GIFT_WRAP} (gift wrap), got {event['kind']}"
     assert len(event.get("sig", "")) == 128, "BIP-340 Schnorr signature must be 128 hex characters"
     assert "id" in event, "Published event must contain an id field"
 
@@ -243,9 +243,9 @@ async def test_receive_returns_event_within_5s_timeout(
 
     assert len(received) == 1, "receive() must return exactly one envelope"
     payload = json.loads(received[0])
-    assert payload["envelope_id"] == "nostr-test-39ff64de", (
-        "Unwrapped envelope must match the original envelope_id"
-    )
+    assert (
+        payload["envelope_id"] == "nostr-test-39ff64de"
+    ), "Unwrapped envelope must match the original envelope_id"
 
 
 async def test_health_check_returns_available(relay: MockNostrRelay) -> None:

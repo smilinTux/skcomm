@@ -1118,9 +1118,9 @@ def heartbeat_publish(
         agent_name=agent_name or node_id,
         capabilities=list(capability),
         ttl_seconds=ttl,
-        sync_root=Path(sync_root).expanduser()
-        if sync_root
-        else Path("~/.skcapstone/sync").expanduser(),
+        sync_root=(
+            Path(sync_root).expanduser() if sync_root else Path("~/.skcapstone/sync").expanduser()
+        ),
         skcomm_status=skcomm_status,
     )
 
