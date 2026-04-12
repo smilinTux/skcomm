@@ -7,8 +7,13 @@ Wants=network-online.target
 [Service]
 Type=simple
 WorkingDirectory=%h
+Environment=PYTHONUNBUFFERED=1
+Environment=SKAGENT=lumina
+Environment=SKCAPSTONE_AGENT=lumina
+Environment=SKMEMORY_AGENT=lumina
 Environment=SKCHAT_IDENTITY=capauth:opus@skworld.io
-ExecStart=@@PYTHON3@@ -m uvicorn skcomm.api:app --host 127.0.0.1 --port 9384 --log-level info
+Environment=PATH=%h/.skenv/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=%h/.skenv/bin/python3 -m uvicorn skcomm.api:app --host 127.0.0.1 --port 9384 --log-level info
 Restart=on-failure
 RestartSec=5s
 StandardOutput=journal
