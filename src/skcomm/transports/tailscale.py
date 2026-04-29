@@ -318,7 +318,18 @@ class TailscaleTransport(Transport):
         Args:
             peer_name: Agent name or fingerprint to register.
             tailscale_ip: The peer's 100.x.x.x Tailscale IP address.
+
+        Raises:
+            ValueError: If tailscale_ip is not a valid Tailscale address
+                (must start with ``100.``).  Rejecting non-Tailscale IPs
+                here prevents misconfiguration from silently routing traffic
+                outside the mesh.
         """
+        if not tailscale_ip.startswith("100."):
+            raise ValueError(
+                f"register_peer_ip: '{tailscale_ip}' is not a valid Tailscale IP "
+                "(must start with 100.x.x.x)"
+            )
         with self._peer_ips_lock:
             self._peer_ips[peer_name] = tailscale_ip
         logger.debug("Registered Tailscale peer: %s → %s", peer_name, tailscale_ip)

@@ -406,6 +406,15 @@ class WebRTCTransport(Transport):
         if self._loop_thread and self._loop_thread.is_alive():
             self._loop_thread.join(timeout=5.0)
 
+        # Defensive close after join: _run_loop's finally block normally handles
+        # this, but if the thread never started or exited before run_until_complete
+        # was entered, the loop may still be open.
+        if self._loop and not self._loop.is_closed():
+            try:
+                self._loop.close()
+            except Exception:
+                pass
+
         self._signaling_connected = False
 
     # ──────────────────────────────────────────────────────────────────────

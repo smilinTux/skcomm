@@ -339,9 +339,19 @@ class HeartbeatPublisher:
         board, then writes a JSON file named after this node's ID. An
         atomic rename ensures readers never see a partial file.
 
+        Raises:
+            ValueError: If both node_id and agent_name are empty — a heartbeat
+                with no identity would silently overwrite the empty-string
+                filename ``{sync_root}/heartbeats/.json`` and is never useful.
+
         Returns:
             Path to the written heartbeat file.
         """
+        if not self._cfg.node_id.strip() and not self._cfg.agent_name.strip():
+            raise ValueError(
+                "HeartbeatPublisher: both node_id and agent_name are empty — "
+                "cannot publish an anonymous heartbeat"
+            )
         sync_root = self._cfg.sync_root.expanduser()
         hb_dir = sync_root / V2_HEARTBEAT_DIR
         hb_dir.mkdir(parents=True, exist_ok=True)
