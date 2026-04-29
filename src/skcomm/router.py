@@ -196,8 +196,11 @@ class Router:
                         self._seen_ids[env_id] = time.time()
                         self._seen_ids.move_to_end(env_id)
                     all_data.append(data)
-            except Exception:
-                logger.exception("Error receiving from transport '%s'", transport.name)
+            except Exception as exc:
+                logger.warning(
+                    "Error receiving from transport '%s': %s", transport.name, exc
+                )
+                self._record_failure(transport.name)
 
         return all_data
 
@@ -213,6 +216,7 @@ class Router:
                 health = transport.health_check()
                 report[transport.name] = health.model_dump(mode="json")
             except Exception as exc:
+                logger.warning("Health check failed for transport '%s': %s", transport.name, exc)
                 report[transport.name] = {
                     "transport_name": transport.name,
                     "status": "unavailable",

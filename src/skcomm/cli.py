@@ -257,6 +257,7 @@ def daemon(config: Optional[str], interval: int, all_agents: bool):
                     urg = env.metadata.urgency.value.upper()
                     _print(f"  [green]>[/] [{urg}] {env.sender} → {env.recipient}: {preview}")
         except Exception as exc:
+            logger.warning("cli.py: %s", exc)
             _print(f"  [red]Error during receive: {exc}[/]")
 
         time.sleep(interval)
@@ -800,6 +801,7 @@ def peer_import(source: str, no_gpg: bool, yes: bool):
         _print(f"\n  [red]Error:[/] Invalid JSON: {exc}\n")
         raise SystemExit(1)
     except Exception as exc:
+        logger.warning("cli.py: %s", exc)
         _print(f"\n  [red]Error:[/] Could not read source: {exc}\n")
         raise SystemExit(1)
 
@@ -1575,7 +1577,8 @@ def queue_drain(config: Optional[str]):
             envelope = MessageEnvelope.from_bytes(envelope_bytes)
             report = comm.send_envelope(envelope)
             return report.delivered
-        except Exception:
+        except Exception as e:
+            logger.warning("cli.py: %s", e)
             return False
 
     delivered, failed = q.drain(try_send)
@@ -1894,7 +1897,8 @@ def pubsub_publish(topic: str, payload_json: str, sender: Optional[str], config:
 
             cfg = load_config(config)
             sender = cfg.identity.name
-        except Exception:
+        except Exception as e:
+            logger.warning("cli.py: %s", e)
             sender = "cli"
 
     broker = PubSubBroker(name="cli-publish")

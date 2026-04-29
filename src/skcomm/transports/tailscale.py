@@ -301,7 +301,8 @@ class TailscaleTransport(Transport):
             if self._server_socket:
                 try:
                     self._server_socket.close()
-                except Exception:
+                except Exception as e:
+                    logger.warning("tailscale.py: %s", e)
                     pass
                 self._server_socket = None
 
@@ -515,7 +516,8 @@ class TailscaleTransport(Transport):
                 for t in peer.transports:
                     if t.transport == "tailscale":
                         return t.settings.get("tailscale_ip")
-        except Exception:
+        except Exception as e:
+            logger.warning("tailscale.py: %s", e)
             pass
         return None
 

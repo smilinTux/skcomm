@@ -296,6 +296,7 @@ class MessageQueue:
             try:
                 success = send_fn(queued.envelope_bytes, queued.meta.recipient)
             except Exception as exc:
+                logger.warning("queue.py: %s", exc)
                 success = False
                 meta.record_attempt(error=str(exc))
                 self.update_meta(meta)

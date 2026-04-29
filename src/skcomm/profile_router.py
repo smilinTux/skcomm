@@ -194,6 +194,7 @@ async def get_identity(fingerprint: str = Depends(require_auth)):
     except ImportError:
         raise HTTPException(status_code=501, detail="skcapstone not installed")
     except Exception as exc:
+        logger.warning("profile_router.py: %s", exc)
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
@@ -243,6 +244,7 @@ async def get_memories(
     except ImportError:
         raise HTTPException(status_code=501, detail="skcapstone not installed")
     except Exception as exc:
+        logger.warning("profile_router.py: %s", exc)
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
@@ -273,6 +275,7 @@ async def get_memory(memory_id: str, fingerprint: str = Depends(require_auth)):
     except ImportError:
         raise HTTPException(status_code=501, detail="skcapstone not installed")
     except Exception as exc:
+        logger.warning("profile_router.py: %s", exc)
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
@@ -300,6 +303,7 @@ async def store_memory(
     except ImportError:
         raise HTTPException(status_code=501, detail="skcapstone not installed")
     except Exception as exc:
+        logger.warning("profile_router.py: %s", exc)
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
@@ -324,6 +328,7 @@ async def get_trust(fingerprint: str = Depends(require_auth)):
     except ImportError:
         raise HTTPException(status_code=501, detail="skcapstone trust pillar not available")
     except Exception as exc:
+        logger.warning("profile_router.py: %s", exc)
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
@@ -352,6 +357,7 @@ async def get_soul(fingerprint: str = Depends(require_auth)):
     except ImportError:
         result["blueprint"] = None
     except Exception as exc:
+        logger.warning("profile_router.py: %s", exc)
         result["blueprint_error"] = str(exc)
 
     # Warmth anchor
@@ -362,6 +368,7 @@ async def get_soul(fingerprint: str = Depends(require_auth)):
     except ImportError:
         result["warmth_anchor"] = None
     except Exception as exc:
+        logger.warning("profile_router.py: %s", exc)
         result["warmth_anchor_error"] = str(exc)
 
     return result
@@ -387,6 +394,7 @@ async def get_journal(
     except ImportError:
         raise HTTPException(status_code=501, detail="skmemory not installed")
     except Exception as exc:
+        logger.warning("profile_router.py: %s", exc)
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
@@ -413,6 +421,7 @@ async def write_journal(
     except ImportError:
         raise HTTPException(status_code=501, detail="skmemory not installed")
     except Exception as exc:
+        logger.warning("profile_router.py: %s", exc)
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
@@ -427,6 +436,7 @@ async def get_coordination(fingerprint: str = Depends(require_auth)):
     except ImportError:
         raise HTTPException(status_code=501, detail="skcapstone not installed")
     except Exception as exc:
+        logger.warning("profile_router.py: %s", exc)
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
@@ -443,6 +453,7 @@ async def get_context(
     except ImportError:
         raise HTTPException(status_code=501, detail="skcapstone not installed")
     except Exception as exc:
+        logger.warning("profile_router.py: %s", exc)
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
@@ -525,6 +536,7 @@ async def trigger_housekeeping(
     except ImportError:
         raise HTTPException(status_code=501, detail="skcapstone housekeeping not available")
     except Exception as exc:
+        logger.warning("profile_router.py: %s", exc)
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 

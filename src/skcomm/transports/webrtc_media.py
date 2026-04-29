@@ -596,7 +596,8 @@ class FaceTimeSession:
             if params.encodings:
                 params.encodings[0].maxBitrate = max_bitrate
                 await sender.setParameters(params)
-        except Exception:
+        except Exception as e:
+            logger.warning("webrtc_media.py: %s", e)
             pass  # Not all aiortc versions support this
 
     # ──────────────────────────────────────────────────────────────────

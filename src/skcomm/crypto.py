@@ -306,7 +306,8 @@ class KeyStore:
                     key_path = Path(pubkey_path).expanduser()
                     if key_path.exists():
                         self._keys[name] = key_path.read_text(encoding="utf-8")
-            except Exception:
+            except Exception as e:
+                logger.warning("crypto.py: %s", e)
                 continue
 
     def get_public_key(self, peer: str) -> Optional[str]:

@@ -645,7 +645,8 @@ async def get_conversations():
             if thread["last_at"] is None or ts > thread["last_at"]:
                 thread["last_at"] = ts
                 thread["preview"] = env.payload.content[:100]
-        except Exception:
+        except Exception as e:
+            logger.warning("api.py: %s", e)
             continue
 
     # ── Source 2: Syncthing comms folders (delivered messages) ────────
@@ -694,7 +695,8 @@ async def get_conversations():
                     if ts and (thread["last_at"] is None or ts > thread["last_at"]):
                         thread["last_at"] = ts
                         thread["preview"] = content[:100]
-                except Exception:
+                except Exception as e:
+                    logger.warning("api.py: %s", e)
                     continue
 
     # ── Source 3: SKChat history (skmemory SQLite) ────────────────────
@@ -868,7 +870,8 @@ async def get_conversation(
                     ),
                 )
             )
-        except Exception:
+        except Exception as e:
+            logger.warning("api.py: %s", e)
             continue
 
     # ── Source 2: Syncthing comms folders ─────────────────────────────
@@ -928,7 +931,8 @@ async def get_conversation(
                             ),
                         )
                     )
-                except Exception:
+                except Exception as e:
+                    logger.warning("api.py: %s", e)
                     continue
 
     # Sort oldest-first, then apply pagination.
@@ -1081,7 +1085,8 @@ async def get_conversation_messages(
                     ),
                 )
             )
-        except Exception:
+        except Exception as e:
+            logger.warning("api.py: %s", e)
             continue
 
     # ── Source 3: Syncthing comms folders (.skc.json files) ───────────
@@ -1144,7 +1149,8 @@ async def get_conversation_messages(
                             ),
                         )
                     )
-                except Exception:
+                except Exception as e:
+                    logger.warning("api.py: %s", e)
                     continue
 
     # Sort oldest-first, then paginate.
@@ -1886,6 +1892,7 @@ async def update_presence(request: PresenceRequest):
                     }
                 )
             except Exception as exc:
+                logger.warning("api.py: %s", exc)
                 peer_errors.append({"peer": peer.name, "error": str(exc)})
     except Exception as exc:
         logger.warning("Peer store lookup failed during presence broadcast: %s", exc)

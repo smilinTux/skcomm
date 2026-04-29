@@ -45,7 +45,8 @@ try:
     from .capauth_validator import CapAuthValidator as _CapAuthValidator
 
     _validator: Any = _CapAuthValidator()
-except Exception:
+except Exception as e:
+    logger.warning("CapAuth validator unavailable — authenticated DID endpoints will be disabled: %s", e)
     _validator = None
 
 
@@ -99,7 +100,8 @@ def _tailnet_params() -> tuple[str, str]:
     if not hostname:
         try:
             hostname = socket.gethostname()
-        except Exception:
+        except Exception as e:
+            logger.warning("did_router.py: %s", e)
             pass
     return hostname, tailnet
 
@@ -202,6 +204,7 @@ async def did_peer(name: str, fingerprint: str = Depends(_require_capauth)) -> J
     try:
         peer_data = json.loads(peer_file.read_text(encoding="utf-8"))
     except Exception as exc:
+        logger.warning("did_router.py: %s", exc)
         raise HTTPException(status_code=500, detail=f"Failed to read peer file: {exc}")
 
     did_key = peer_data.get("did_key")
@@ -296,6 +299,7 @@ async def did_publish(fingerprint: str = Depends(_require_capauth)) -> JSONRespo
                 path.write_text(content, encoding="utf-8")
                 written.append(str(path))
             except Exception as exc:
+                logger.warning("did_router.py: %s", exc)
                 errors.append(f"{path}: {exc}")
 
         _write(

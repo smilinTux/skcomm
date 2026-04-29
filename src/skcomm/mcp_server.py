@@ -74,7 +74,8 @@ def _load_api_port() -> int:
                 raw = yaml.safe_load(path.read_text()) or {}
                 skcomm = raw.get("skcomm", raw)
                 return int(skcomm.get("api", {}).get("port", _DEFAULT_PORT))
-            except Exception:
+            except Exception as e:
+                logger.warning("mcp_server.py: %s", e)
                 pass
     return _DEFAULT_PORT
 

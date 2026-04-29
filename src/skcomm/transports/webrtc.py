@@ -396,7 +396,8 @@ class WebRTCTransport(Transport):
             except RuntimeError:
                 # Loop already stopped — skip async cleanup
                 pass
-            except Exception:
+            except Exception as e:
+                logger.warning("webrtc.py: %s", e)
                 pass
             try:
                 self._loop.call_soon_threadsafe(self._loop.stop)
@@ -412,7 +413,8 @@ class WebRTCTransport(Transport):
         if self._loop and not self._loop.is_closed():
             try:
                 self._loop.close()
-            except Exception:
+            except Exception as e:
+                logger.warning("webrtc.py: %s", e)
                 pass
 
         self._signaling_connected = False
@@ -872,7 +874,8 @@ class WebRTCTransport(Transport):
         if peer:
             try:
                 await peer.pc.close()
-            except Exception:
+            except Exception as e:
+                logger.warning("webrtc.py: %s", e)
                 pass
             logger.info("WebRTC: peer %s cleaned up", peer_id[:8])
 
@@ -892,7 +895,8 @@ class WebRTCTransport(Transport):
         if self._signaling_ws:
             try:
                 await self._signaling_ws.close()
-            except Exception:
+            except Exception as e:
+                logger.warning("webrtc.py: %s", e)
                 pass
 
     # ──────────────────────────────────────────────────────────────────────

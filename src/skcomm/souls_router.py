@@ -80,7 +80,8 @@ def _load_blueprint_yaml(path: Path) -> Optional[dict]:
         if not isinstance(data, dict):
             return None
         return data
-    except Exception:
+    except Exception as e:
+        logger.warning("souls_router.py: %s", e)
         return None
 
 
@@ -144,13 +145,15 @@ def _read_feb(root: Path) -> dict:
             from skcapstone.warmth_anchor import get_anchor  # type: ignore
 
             return get_anchor(root)
-    except Exception:
+    except Exception as e:
+        logger.warning("souls_router.py: %s", e)
         pass
     # Fallback: read raw
     anchor_path = root / "warmth_anchor.json"
     try:
         return json.loads(anchor_path.read_text(encoding="utf-8"))
-    except Exception:
+    except Exception as e:
+        logger.warning("souls_router.py: %s", e)
         return {}
 
 
@@ -495,6 +498,7 @@ async def install_library(request: InstallLibraryRequest):
             dest.write_bytes(yaml_file.read_bytes())
             installed += 1
         except Exception as exc:
+            logger.warning("souls_router.py: %s", exc)
             errors.append(f"{yaml_file.name}: {exc}")
 
     return {
@@ -525,6 +529,7 @@ async def _install_from_github(library: Path) -> dict:
         with urllib.request.urlopen(req, timeout=15) as resp:
             tree_data = json.loads(resp.read().decode())
     except Exception as exc:
+        logger.warning("souls_router.py: %s", exc)
         raise HTTPException(
             status_code=503,
             detail=f"Could not reach GitHub API: {exc}. Install the souls-blueprints repo locally and provide the path.",
@@ -548,6 +553,7 @@ async def _install_from_github(library: Path) -> dict:
                 dest.write_bytes(r.read())
             installed += 1
         except Exception as exc:
+            logger.warning("souls_router.py: %s", exc)
             errors.append(f"{path_parts}: {exc}")
 
     return {

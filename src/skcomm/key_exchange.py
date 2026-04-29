@@ -72,6 +72,7 @@ def fetch_peer_from_did(
         try:
             did_doc = json.loads(Path(file_path).read_text(encoding="utf-8"))
         except Exception as exc:
+            logger.warning("key_exchange.py: %s", exc)
             raise KeyExchangeError(f"Failed to read local DID file: {exc}") from exc
         return _did_doc_to_peer(did_doc, peers_dir=peers_dir, save=save)
     else:
@@ -94,6 +95,7 @@ def fetch_peer_from_did(
             ) from exc
         raise KeyExchangeError(f"HTTP {exc.code} fetching DID: {exc.reason}") from exc
     except Exception as exc:
+        logger.warning("key_exchange.py: %s", exc)
         raise KeyExchangeError(f"Failed to fetch DID from {url}: {exc}") from exc
 
     # Also try to fetch PGP public key if available alongside the DID
@@ -259,7 +261,8 @@ def export_peer_bundle(
     if profile_path.exists():
         try:
             profile = json.loads(profile_path.read_text(encoding="utf-8"))
-        except Exception:
+        except Exception as e:
+            logger.warning("key_exchange.py: %s", e)
             pass
 
     # Get fingerprint from GPG
@@ -432,7 +435,8 @@ def _get_fingerprint_from_key(armor: str) -> Optional[str]:
         for line in result.stdout.decode("utf-8", errors="replace").splitlines():
             if line.startswith("fpr:"):
                 return line.split(":")[9]
-    except Exception:
+    except Exception as e:
+        logger.warning("key_exchange.py: %s", e)
         pass
     return None
 
@@ -453,7 +457,8 @@ def _get_name_from_key(armor: str) -> Optional[str]:
                 name = uid_field.split("(")[0].split("<")[0].strip()
                 if name:
                     return name
-    except Exception:
+    except Exception as e:
+        logger.warning("key_exchange.py: %s", e)
         pass
     return None
 
@@ -473,7 +478,8 @@ def _get_email_from_key(armor: str) -> Optional[str]:
                 match = re.search(r"<([^>]+)>", uid_field)
                 if match:
                     return match.group(1)
-    except Exception:
+    except Exception as e:
+        logger.warning("key_exchange.py: %s", e)
         pass
     return None
 
@@ -505,7 +511,8 @@ def _get_local_transports() -> list[dict]:
                     }
                 )
         return result
-    except Exception:
+    except Exception as e:
+        logger.warning("key_exchange.py: %s", e)
         return []
 
 

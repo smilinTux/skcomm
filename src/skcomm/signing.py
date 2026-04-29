@@ -242,6 +242,7 @@ class EnvelopeVerifier:
                 fingerprint=signed.signer_fingerprint,
             )
         except Exception as exc:
+            logger.warning("signing.py: %s", exc)
             return VerificationResult(
                 valid=False,
                 reason=f"Verification error: {exc}",

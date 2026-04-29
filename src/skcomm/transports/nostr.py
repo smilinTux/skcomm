@@ -736,7 +736,8 @@ class NostrTransport(Transport):
                 with _ws_connect(relay_url, open_timeout=self._timeout, close_timeout=1) as ws:
                     ws.close()
                 reachable += 1
-            except Exception:
+            except Exception as e:
+                logger.warning("nostr.py: %s", e)
                 pass
 
         latency = (time.monotonic() - start) * 1000

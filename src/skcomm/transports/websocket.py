@@ -262,6 +262,7 @@ class WebSocketTransport(Transport):
             ws.ping()
             ping_latency = (time.monotonic() - ping_start) * 1000
         except Exception as exc:
+            logger.warning("websocket.py: %s", exc)
             latency = (time.monotonic() - start) * 1000
             return HealthStatus(
                 transport_name=self.name,
@@ -322,7 +323,8 @@ class WebSocketTransport(Transport):
             if self._ws:
                 try:
                     self._ws.close()
-                except Exception:
+                except Exception as e:
+                    logger.warning("websocket.py: %s", e)
                     pass
                 self._ws = None
 

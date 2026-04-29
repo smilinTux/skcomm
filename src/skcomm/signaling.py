@@ -403,7 +403,8 @@ class SignalingBroker:
                                 }
                             )
                         )
-                    except Exception:
+                    except Exception as e:
+                        logger.warning("signaling.py: %s", e)
                         pass
                     continue
 
