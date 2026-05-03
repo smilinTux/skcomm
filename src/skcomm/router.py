@@ -447,7 +447,16 @@ class Router:
             surviving: list[dict] = []
 
             for entry in entries:
-                if entry.get("next_retry_at", 0) > now:
+                # Tolerate legacy entries that stored next_retry_at as an ISO
+                # string instead of an epoch float.
+                nra = entry.get("next_retry_at", 0)
+                if isinstance(nra, str):
+                    try:
+                        from datetime import datetime
+                        nra = datetime.fromisoformat(nra.replace("Z", "+00:00")).timestamp()
+                    except Exception:
+                        nra = 0
+                if nra > now:
                     surviving.append(entry)
                     continue
 
