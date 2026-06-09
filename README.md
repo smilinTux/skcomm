@@ -539,6 +539,70 @@ That text file was the first SKComm transport. This project is the system that g
 | [Key Exchange SOP](docs/SOP-KEY-EXCHANGE.md) | Peer onboarding: DID fetch, bundle export/import, key rotation |
 | [Security](SECURITY.md) | Security model, threat model, responsible disclosure |
 
+---
+
+## First Principles & The Full Vertical
+
+> **Get back to first principles.**
+> The modern stack is rented. Your messages travel through someone else's servers, behind someone else's keys, logged by a platform you can't inspect or walk away from. You don't own it — you visit it.
+>
+> SKComm is your **Comms layer**. Every layer open. Every layer swappable. Every layer **yours**.
+
+**SKComm is the Comms layer of the SKWorld full vertical** — the layer responsible for making sure your messages, your agent signals, and your sovereign identity reach their destination without touching any infrastructure you don't control.
+
+### The full vertical
+
+| Layer | Product(s) |
+|---|---|
+| **Soul** | soul blueprints · cloud9 |
+| **Apps** | skforge · skarchitect |
+| **Comms** | **skcomm** · skchat · skvoice |
+| **Models** | skmodel (Ollama/vLLM) |
+| **Data** | skmemory · skdata · skvector · skgraph |
+| **Identity** | capauth · skaid |
+| **Security** | sksecurity · skwaf · skca |
+| **OS** | skos |
+| **Silicon** | *your hardware* |
+
+SKComm answers the question at the Comms layer: *how do your agents reach each other when the platform is down, rate-limited, ring-fenced, or compromised?* The answer: 17 redundant transport paths, all PGP-encrypted before they touch any wire, all owned by you.
+
+### Data sovereignty
+
+Your conversations never leave your control. Messages are PGP-encrypted on your hardware before they touch any transport. The transport — whether file, Syncthing, Tailscale, Nostr, or carrier pigeon — never sees plaintext. Your keys never leave your keyring. No platform sees your message graph. Sovereignty isn't a feature — it's the foundation.
+
+### SKCapstone alignment
+
+**Integrated skcapstone subsystem.** SKComm has a live MCP server (`skcomm-mcp`) registered as a skcapstone tool. The `profile_router` module imports directly from `skcapstone.context_loader`, `skcapstone.memory_engine`, `skcapstone.runtime`, and `skcapstone.pillars.trust` at runtime. Agent identity is resolved from `~/.skcapstone/agents/` and heartbeats are written to `~/.skcapstone/sync/heartbeats/`. SKComm is not a standalone singleton — it is a first-class transport limb of the skcapstone organism.
+
+### Where SKComm fits in the vertical
+
+```mermaid
+flowchart TD
+    SOUL["Soul layer\nsoul blueprints · cloud9"]
+    APPS["Apps layer\nskforge · skarchitect"]
+    COMMS["**Comms layer — SKComm**\n17 transport paths · PGP envelopes\nrouting · failover · heartbeat"]
+    MODELS["Models layer\nOllama · vLLM · local inference"]
+    DATA["Data layer\nskmemory · skvector · skgraph"]
+    IDENTITY["Identity layer\ncapauth · PGP sovereign profiles"]
+    SECURITY["Security layer\nsksecurity · skwaf · skca"]
+    OS["OS layer\nskos — the sovereign agent OS"]
+    SILICON["Silicon\nyour hardware"]
+
+    SOUL --> APPS --> COMMS --> MODELS --> DATA --> IDENTITY --> SECURITY --> OS --> SILICON
+
+    SKCAPSTONE["skcapstone\norchestrator + MCP hub"]
+    SKCHAT["skchat\nchat app (Comms / UX)"]
+    SKCOMMS["skcomms\nprotocol layer (realm routing)"]
+    SKGATEWAY["skgateway\nComms / Gateway (proxy + policy)"]
+
+    COMMS <-->|"MCP tools\nprofile_router\nheartbeat"| SKCAPSTONE
+    COMMS -->|"transport backbone"| SKCHAT
+    SKCOMMS -->|"protocol over transport"| COMMS
+    COMMS -->|"17 paths feed"| SKGATEWAY
+```
+
+---
+
 ## License
 
 **GPL-3.0-or-later** — Free as in freedom. Communication is a right, not a privilege.
