@@ -1,44 +1,27 @@
+"""DEPRECATED: skcomm is now skcomms.
+
+This package is a thin re-export shim. All transport modules now live in
+``skcomms``. This shim will be removed in a future release.
+
+Migrate your imports::
+
+    # OLD (deprecated)
+    from skcomm.core import SKComm
+    from skcomm.models import MessageEnvelope
+
+    # NEW (canonical)
+    from skcomms.core import SKComm
+    from skcomms.models import MessageEnvelope
 """
-SKComm — Transport-agnostic encrypted communication for sovereign AI.
+import importlib
+import sys
+import warnings
 
-One message. Many paths. Always delivered.
-
-The postal service model: separate the message from the medium.
-The envelope format never changes. Only the delivery mechanism varies.
-"""
-
-__version__ = "0.1.1"
-
-from .core import SKComm
-from .crypto import EnvelopeCrypto, KeyStore
-from .models import (
-    MessageEnvelope,
-    MessageMetadata,
-    MessagePayload,
-    MessageType,
-    RoutingConfig,
-    RoutingMode,
+warnings.warn(
+    "skcomm is deprecated — import from skcomms instead",
+    DeprecationWarning,
+    stacklevel=2,
 )
-from .signing import EnvelopeSigner, EnvelopeVerifier, SignedEnvelope, VerificationResult
-from .transport import HealthStatus, SendResult, Transport, TransportError, TransportStatus
-
-__all__ = [
-    "SKComm",
-    "MessageEnvelope",
-    "MessageMetadata",
-    "MessagePayload",
-    "MessageType",
-    "RoutingConfig",
-    "RoutingMode",
-    "Transport",
-    "TransportError",
-    "TransportStatus",
-    "HealthStatus",
-    "SendResult",
-    "EnvelopeCrypto",
-    "KeyStore",
-    "SignedEnvelope",
-    "EnvelopeSigner",
-    "EnvelopeVerifier",
-    "VerificationResult",
-]
+_pkg = importlib.import_module("skcomms")
+# Alias the parent package → submodule imports use skcomms.__path__
+sys.modules[__name__] = _pkg
