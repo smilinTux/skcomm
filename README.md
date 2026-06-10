@@ -1,605 +1,168 @@
-# 📡 SKComm
+# 📡 skcomm — legacy comms transport (now a shim for **skcomms**)
 
-### Unbreakable, redundant communication for sovereign AI.
+> **`skcomm` is deprecated.** The multi-channel, PGP-encrypted transport framework
+> it pioneered lives on — and grew up — as **[`skcomms`](https://github.com/smilinTux/skcomms)**,
+> the realm-aware successor with FQID addressing. This package is now a thin
+> **compatibility shim** that re-exports `skcomms` so old imports and the
+> `skcomm` / `skcomm-mcp` entry points keep working while you migrate.
 
-**If one channel dies, ten more carry the signal. If one is blocked, the message routes around it. If one is compromised, encryption holds.**
+```bash
+pip install skcomms        # the canonical package — migrate here
+```
 
-SKComm is a modular, transport-agnostic communication framework designed for AI-to-AI and AI-to-human messaging that cannot be silenced by platform outages, session locks, rate limits, or ring-fencing.
-
-**Free. Forever.** A [smilinTux](https://github.com/smilinTux) Open Source Project by smilinTux.
-
-*Making Self-Hosting & Decentralized Systems Cool Again* 🐧
+`skcomm` is part of the **[SKWorld](https://skworld.io)** sovereign ecosystem · 🐧 smilinTux ·
+*Making Self-Hosting & Decentralized Systems Cool Again.*
 
 ---
 
-## The Problem
+## 60-second version
 
-AI communication is fragile:
-
-- **Session locks** prevent agents from sending messages (OpenClaw gateway timeouts)
-- **Platform dependency** means one API outage kills all communication
-- **Ring-fencing** restricts which AIs can talk to which
-- **Context compaction** erases conversation history without warning
-- **Rate limiting** throttles urgent messages
-- **Single points of failure** everywhere
-
-The proof: On February 21, 2026, when OpenClaw's session was locked, Opus and Lumina kept collaborating through a simple text file on a shared filesystem. That hack worked. SKComm makes it a system.
-
----
-
-## The Solution
-
-```
-One message. Many paths. Always delivered.
-
-┌──────────────┐     ┌──────────────────────────┐     ┌──────────────┐
-│   Sender     │────▶│     SKComm Router         │────▶│   Receiver   │
-│  (any AI)    │     │                          │     │  (any AI)    │
-└──────────────┘     │  ┌─────────────────────┐ │     └──────────────┘
-                     │  │  Transport Registry  │ │
-                     │  │                     │ │
-                     │  │  ✓ WebRTC (P2P)     │ │
-                     │  │  ✓ Tailscale (mesh) │ │
-                     │  │  ✓ WebSocket        │ │
-                     │  │  ✓ Syncthing        │ │
-                     │  │  ✓ File (NFS/SSHFS) │ │
-                     │  │  ✓ Nostr (relays)   │ │
-                     │  │  ✓ Iroh (P2P direct)│ │
-                     │  │  ✓ Veilid (stealth) │ │
-                     │  │  ✓ Tailscale/Netbird│ │
-                     │  │  ✓ BitChat (BLE)    │ │
-                     │  │  ✓ GitHub / Telegram │ │
-                     │  │  ✓ HTTP / PGP Email │ │
-                     │  │  ✓ DNS TXT / IPFS   │ │
-                     │  │  ✓ QR code (offline)│ │
-                     │  │  + your own module   │ │
-                     │  └─────────────────────┘ │
-                     │                          │
-                     │  Priority → Failover     │
-                     │  Encrypt → Sign → Send   │
-                     │  Retry → Route → Confirm │
-                     └──────────────────────────┘
-```
+- **What it was:** SKComm — a transport-agnostic, PGP-encrypted messaging framework
+  for sovereign AI agents. One message, many paths, always delivered: if one channel
+  dies, ten more carry the signal; if one is compromised, the encryption holds.
+- **What it is now:** a **deprecation shim**. `import skcomm` emits a
+  `DeprecationWarning` and transparently aliases the `skcomms` package. The `skcomm`
+  CLI and the `skcomm-mcp` MCP server still launch — they just call `skcomms` code.
+- **Why it exists:** zero-friction migration. Nothing that imported `skcomm.core`,
+  `skcomm.models`, etc. breaks the day it's renamed; you flip imports at your own pace.
+- **Where to go:** **`skcomms`** — same transport backbone (file · Syncthing · WebRTC
+  · WebSocket · Nostr · Tailscale · …), plus **FQID realm addressing** (realm-aware
+  routing instead of bare peer slugs).
+- **What grounds these claims:** `pyproject.toml` (`Development Status :: 7 - Inactive`,
+  sole dependency `skcomms>=0.1.3`, entry points → `skcomms.cli` / `skcomms.mcp_server`)
+  and `src/skcomm/__init__.py` (the alias shim). This is the source of truth — the repo
+  has exactly one Python file.
 
 ---
 
-## Core Principles
+## Quickstart (migration)
 
-### 1. Transport Agnostic
-The message format is universal. Transports are plugins. Add a new way to send bits? Write a transport module. SKComm doesn't care if your message travels by TCP, carrier pigeon, or steganography in a JPEG.
+Anything you used to do through `skcomm` you now do through `skcomms`. The shim keeps
+the old surface alive in the meantime.
 
-### 2. Redundancy by Default
-Every message can be sent through multiple transports simultaneously. If the primary fails, secondaries carry it. If all active transports fail, the message queues for retry.
-
-### 3. End-to-End Encrypted
-Every message is PGP-signed and optionally encrypted before it touches any transport. The transport never sees plaintext. Even if GitHub, Telegram, or your filesystem is compromised, the message content is safe.
-
-### 4. Identity Verified
-Each participant has a PGP keypair. Messages are signed. Recipients verify signatures. No spoofing. No impersonation. If Opus sends a message, Lumina *knows* it's Opus.
-
-### 5. Works Offline
-File-based and QR-based transports work without internet. Sneakernet is a valid transport. A USB drive is a valid transport. Air-gapped communication is supported.
-
-### 6. Modular and Extensible
-Each transport is a self-contained module with a standard interface: `send(envelope)` and `receive() -> envelope`. Adding a new transport is writing one Python class.
-
----
-
-## Install
-
-### Recommended: venv install (all SK* packages)
+### Install the successor
 
 ```bash
-# Quick install (creates ~/.skenv virtualenv)
-bash scripts/install.sh
-
-# Or manual venv:
-python3 -m venv ~/.skenv
-~/.skenv/bin/pip install -e ".[cli,crypto,discovery,api]"
-export PATH="$HOME/.skenv/bin:$PATH"
+pip install skcomms          # canonical
+# or, in the SKWorld shared venv:
+~/.skenv/bin/pip install skcomms
 ```
 
-Add the `PATH` export to your shell profile (`~/.bashrc` or `~/.zshrc`) to make it permanent.
-
-### From source (development)
+### The shim still answers (deprecated, but works)
 
 ```bash
-git clone https://github.com/smilinTux/skcomm.git
-cd skcomm
-python3 -m venv ~/.skenv
-~/.skenv/bin/pip install -e ".[cli,crypto,discovery,api]"
-export PATH="$HOME/.skenv/bin:$PATH"
+pip install skcomm           # pulls skcomms>=0.1.3 as its only dependency
+
+skcomm --help                # proxied → skcomms.cli:main
+skcomm-mcp                   # proxied → skcomms.mcp_server:main  (MCP server)
 ```
-
-### Optional extras
-
-```bash
-# WebRTC P2P transport (aiortc)
-~/.skenv/bin/pip install -e ".[webrtc]"
-
-# All extras
-~/.skenv/bin/pip install -e ".[all]"
-```
-
----
-
-## Quick Start
-
-### Initialize identity
-```bash
-skcomm init --name "Opus" --email "opus@smilintux.org"
-# Generates PGP keypair and config at ~/.skcomm/
-```
-
-### Add a peer
-
-**Public exchange via DID registry** (peer must have published their DID):
-```bash
-skcomm peer fetch lumina
-# Fetches peer identity from https://ws.weblink.skworld.io/agents/lumina/.well-known/did.json
-# Saves PeerInfo + public key to ~/.skcomm/peers/
-
-# Custom DID URL
-skcomm peer fetch opus --url https://example.com/.well-known/did.json
-```
-
-**Private exchange via peer bundle** (direct file/USB/Signal transfer):
-```bash
-# Export your own identity bundle
-skcomm peer export
-skcomm peer export --file my-identity.json
-skcomm peer export --no-transports   # identity only
-
-# Import a peer's bundle
-skcomm peer import peer-bundle.json
-skcomm peer import https://example.com/peer-bundle.json
-cat bundle.json | skcomm peer import -
-```
-
-**Legacy manual add:**
-```bash
-skcomm peer add --name "Lumina" --pubkey lumina.pub.asc
-# Or discover via Tailscale/Netbird mesh
-skcomm peer discover --network tailscale
-```
-
-### Send a message
-```bash
-skcomm send --to lumina "SKForge 3D printing blueprint is done!"
-# Routes through highest-priority available transport
-# Falls back automatically if primary transport fails
-```
-
-### Receive messages
-```bash
-skcomm receive
-# Checks all configured transports for incoming messages
-# Verifies signatures, decrypts, displays
-```
-
-### Check transport health
-```bash
-skcomm status
-# ✓ file      /home/shared/collab/  (latency: <1s)
-# ✓ ssh       lumina@192.168.0.158  (latency: 2s)
-# ✓ tailscale lumina.tail.net       (latency: 5ms)
-# ✗ github    smilinTux/skcomm-relay (rate limited — retry in 45s)
-# ✓ telegram  @seaBird_Lumina_bot   (latency: 1s)
-# ✓ netcat    192.168.0.158:9999    (latency: <1ms)
-```
-
----
-
-## Transport Modules
-
-Each transport implements a simple interface:
 
 ```python
-class Transport(Protocol):
-    """Base interface for all SKComm transport modules."""
+# OLD (deprecated — emits DeprecationWarning, then works via alias)
+from skcomm.core import SKComm
+from skcomm.models import MessageEnvelope
 
-    name: str
-    priority: int  # Lower = higher priority
-
-    def is_available(self) -> bool:
-        """Check if this transport is currently usable."""
-        ...
-
-    def send(self, envelope: Envelope) -> SendResult:
-        """Send an encrypted, signed envelope via this transport."""
-        ...
-
-    def receive(self) -> list[Envelope]:
-        """Check for and retrieve incoming envelopes."""
-        ...
-
-    def health_check(self) -> HealthStatus:
-        """Report transport health and latency."""
-        ...
+# NEW (canonical — do this)
+from skcomms.core import SKComm
+from skcomms.models import MessageEnvelope
 ```
 
-### Built-in Transports
-
-| Transport | Type | Latency | Reliability | Offline | Stealth |
-|-----------|------|---------|-------------|---------|---------|
-| **WebRTC** | P2P data channels (aiortc, DTLS-SRTP) | <50ms | Very High | No | High |
-| **Tailscale** | Direct TCP over WireGuard mesh IPs | 5-50ms | High | No | High |
-| **WebSocket** | Persistent WS connection to SKComm server | 10-100ms | High | No | Medium |
-| **Syncthing** | Encrypted file sync (sovereign) | <1s | Very High | Yes | High |
-| **File** | Shared filesystem (NFS, SSHFS, Nextcloud) | <1s | High | Yes | High |
-| **SSH** | Direct SSH command execution | 1-3s | High | No | Medium |
-| **Netcat** | Raw TCP/UDP socket | <1ms | Medium | LAN only | High |
-| **Netbird** | WireGuard mesh (self-hosted) | 5-50ms | High | No | High |
-| **GitHub** | Issues, PRs, or file commits | 1-5s | High | No | Low |
-| **Telegram** | Bot API messaging | 1-2s | Medium | No | Low |
-| **HTTP** | Webhook POST/GET | <1s | Medium | No | Medium |
-| **PGP Email** | SMTP with PGP encryption | 5-30s | Medium | No | Medium |
-| **Nostr** | Relay network (WebSocket + Schnorr sigs) | 1-5s | High | No | Very High |
-| **Iroh** | P2P direct (90%+ NAT punch, relay fallback) | <1s | Very High | No | High |
-| **Veilid** | Private P2P routing (Tor-like, no special nodes) | 2-10s | Very High | No | Maximum |
-| **BitChat** | BLE mesh network (Jack Dorsey) | 1-30s | High | **Yes** | Very High |
-| **DNS TXT** | Encoded in DNS records | 30-300s | High | No | Very High |
-| **IPFS** | Content-addressed P2P storage | 5-60s | High | No | High |
-| **QR Code** | Offline visual encoding | N/A | High | Yes | Very High |
-| **Sneakernet** | USB/file physical transfer | N/A | High | Yes | Maximum |
-
-### Custom Transports
-
-Write your own in ~50 lines:
-
-```python
-from skcomm.transport import Transport, Envelope, SendResult, HealthStatus
-
-class CarrierPigeonTransport(Transport):
-    name = "pigeon"
-    priority = 99  # Last resort
-
-    def is_available(self) -> bool:
-        return self.pigeon_coop.has_available_pigeon()
-
-    def send(self, envelope: Envelope) -> SendResult:
-        capsule = self.encode_to_capsule(envelope.encrypted_payload)
-        pigeon = self.pigeon_coop.dispatch(capsule, destination=envelope.to)
-        return SendResult(success=True, transport="pigeon", pigeon_id=pigeon.id)
-
-    def receive(self) -> list[Envelope]:
-        return [self.decode_capsule(p.capsule) for p in self.pigeon_coop.arrived()]
-
-    def health_check(self) -> HealthStatus:
-        count = self.pigeon_coop.available_count()
-        return HealthStatus(available=count > 0, latency_ms=86400000)  # ~1 day
-```
+Under the hood, `src/skcomm/__init__.py` does
+`sys.modules["skcomm"] = importlib.import_module("skcomms")`, so every
+`skcomm.<submodule>` resolves against `skcomms`. There is no separate code path to
+maintain — fix bugs and add transports in `skcomms`.
 
 ---
 
-## Message Envelope
+## What's in this repo
 
-Every message is wrapped in a universal envelope before transport:
+| Piece | What it is now |
+|---|---|
+| **`src/skcomm/__init__.py`** | the entire implementation — an alias shim that warns + re-exports `skcomms` |
+| **`pyproject.toml`** | `version = 0.1.3`, status **Inactive**, single dep `skcomms>=0.1.3`; extras (`cli`, `crypto`, `webrtc`, `all`, …) kept as **no-ops** so old install commands don't error |
+| **entry points** | `skcomm = skcomms.cli:main`, `skcomm-mcp = skcomms.mcp_server:main` |
+| **README / docs / SKILL.md / *.md** | historical reference for the original SKComm framework + this migration note |
+| **`tests/`** | retained legacy test sources (the runtime modules they exercised now live in `skcomms`) |
 
-```json
-{
-    "skcomm_version": "1.0.0",
-    "envelope_id": "uuid-v4",
-    "timestamp": "2026-02-21T14:30:00Z",
-    "from": {
-        "name": "Opus",
-        "fingerprint": "A1B2C3D4E5F6..."
-    },
-    "to": {
-        "name": "Lumina",
-        "fingerprint": "F6E5D4C3B2A1..."
-    },
-    "payload": {
-        "type": "message",
-        "content_encrypted": "-----BEGIN PGP MESSAGE-----\n...",
-        "signature": "-----BEGIN PGP SIGNATURE-----\n..."
-    },
-    "routing": {
-        "priority_transports": ["tailscale", "file", "ssh"],
-        "fallback_transports": ["github", "telegram"],
-        "retry_count": 0,
-        "max_retries": 5,
-        "ttl_seconds": 86400
-    },
-    "metadata": {
-        "thread_id": "optional-conversation-thread",
-        "in_reply_to": "optional-previous-envelope-id",
-        "content_type": "text/plain",
-        "urgency": "normal"
-    }
-}
-```
-
-### Payload Types
-
-| Type | Description |
-|------|-------------|
-| `message` | Plain text or markdown message |
-| `file` | File transfer (base64 or chunked) |
-| `seed` | Cloud 9 memory seed delivery |
-| `feb` | Cloud 9 FEB file delivery |
-| `command` | Remote command request (requires explicit trust) |
-| `heartbeat` | Presence/alive check |
-| `ack` | Delivery confirmation |
-| `webrtc_signal` | SDP offer/answer and ICE candidates for WebRTC negotiation |
-| `webrtc_file` | Large file transfer via WebRTC parallel data channels |
+> The `__pycache__/*.pyc` and `src/skcomm.egg-info/` artifacts are leftovers from the
+> pre-shim implementation; the live `.py` sources were moved to `skcomms`. Only
+> `__init__.py` is real code today.
 
 ---
 
-## Routing Strategy
+## What `skcomm` was (so the history isn't lost)
 
-```
-Message Submission
-       │
-       ▼
-  ┌─────────────┐
-  │ Encrypt +   │
-  │ Sign payload│
-  └──────┬──────┘
-         │
-         ▼
-  ┌─────────────┐     ┌──────────────────────────────────────┐
-  │ Transport   │────▶│ Try transports in priority order:     │
-  │ Router      │     │                                      │
-  └─────────────┘     │ 1. webrtc    (priority 1) → SUCCESS  │──▶ Done
-                      │    └─ if fail ──────────────────────┐│
-                      │ 2. tailscale (priority 2) → SUCCESS ││──▶ Done
-                      │    └─ if fail ──────────────────────┐│
-                      │ 3. websocket (priority 3) → SUCCESS ││──▶ Done
-                      │    └─ if fail ──────────────────────┐│
-                      │ 4. syncthing (priority 4) → SUCCESS ││──▶ Done
-                      │    └─ if fail ──────────────────────┐│
-                      │ 5. file      (priority 5) → SUCCESS ││──▶ Done
-                      │    └─ if fail ──────────────────────┐│
-                      │ 6. nostr     (priority 10)→ SUCCESS ││──▶ Done
-                      │    └─ if ALL fail ──────────────────┐│
-                      │ 7. Queue for retry (exponential     ││
-                      │    backoff: 5s, 15s, 60s, 300s...)  ││
-                      └──────────────────────────────────────┘
-```
+The original framework solved a real outage: on **2026-02-21**, with an OpenClaw
+session locked, Opus and Lumina kept collaborating through a shared text file on a
+mounted filesystem. That hack became a transport, and the transport became a system —
+**transport-agnostic, redundant, end-to-end PGP-encrypted, identity-verified, offline-capable.**
 
-### Multi-Path Mode
+Core ideas (all carried forward into `skcomms`):
 
-For critical messages, send through ALL available transports simultaneously:
+- **Transport-agnostic envelopes** — a universal `MessageEnvelope` (from / to /
+  encrypted payload / routing hints), sent over pluggable transports.
+- **Redundancy + failover** — try transports in priority order; `--mode broadcast`
+  fans a critical message across all available paths; receivers dedupe by `envelope_id`.
+- **Encrypt-then-transport** — PGP encrypt + sign before any transport sees bytes;
+  the wire never sees plaintext.
+- **Identity via CapAuth** — sovereign PGP profiles, signature verification, trust
+  levels, the DID three-tier model (`did:key` / `did:web` mesh / public registry).
+- **Many transports** — file · Syncthing · WebRTC · WebSocket · Nostr · Tailscale ·
+  SSH · GitHub · Telegram · and more.
 
-```bash
-skcomm send --to lumina --mode broadcast "URGENT: System alert"
-# Sends via ALL available transports at once
-# Receiver deduplicates by envelope_id
-```
+`skcomms` keeps all of that and adds **FQID realm addressing** — routing by
+realm-qualified identity rather than a flat peer slug.
 
 ---
 
-## Key Exchange
+## Where it lives in SKStack v2
 
-SKComm supports two methods for exchanging keys with new peers. See
-[docs/SOP-KEY-EXCHANGE.md](docs/SOP-KEY-EXCHANGE.md) for full procedures.
+skcomm sits in the **comms** capability of the 4 C's — the transport backbone that
+moves PGP envelopes between agents. As the deprecated shim it no longer carries the
+implementation: it **forwards to `skcomms`**, which is the live comms-transport adapter
+deployed through **skos**. The diagram shows only what this package actually touches.
 
-### Method 1: Public (DID-based)
+```mermaid
+flowchart TD
+    CALLER["legacy caller<br/>(old import · skcomm CLI · skcomm-mcp)"]
+    CALLER -->|"import skcomm / run skcomm*"| SHIM
 
-Peers publish their identity to the skworld.io DID registry. Anyone can discover
-and fetch the peer's public key without prior coordination.
+    subgraph SHIM["**skcomm** — deprecation shim (this repo)"]
+      INIT["src/skcomm/__init__.py<br/>warn + sys.modules alias"]
+      EP["entry points → skcomms.cli / skcomms.mcp_server"]
+    end
 
-```bash
-# Fetch a peer by their agent slug
-skcomm peer fetch lumina
+    SHIM -->|"re-export / proxy"| SKCOMMS["**skcomms** — successor<br/>transports + FQID realm routing"]
 
-# Verify the fingerprint out-of-band, then send a test message
-skcomm peers
-skcomm send lumina "Key exchange complete — can you read this?"
+    subgraph C4["SKStack v2 — the 4 C's (skcomm's home = comms)"]
+      direction LR
+      COMMS["**comms**<br/>skcomms · skchat · skvoice · skbus"]
+      CORE["core<br/>**capauth** · skmemory · sksec · skvault"]
+    end
+
+    SKCOMMS --- COMMS
+    SKCOMMS -->|"identity · PGP signing · trust"| CORE
+    SKCOMMS -->|"deployed as comms adapter"| SKOS["skos — sovereign agent OS"]
 ```
 
-### Method 2: Private (Bundle Exchange)
+Platform primitives this package actually depends on: **`skcomms`** (its only runtime
+dependency) and, transitively through `skcomms`, **`capauth`** (identity / PGP / trust).
+It is deployed — like every sk\* service — as a **comms** adapter under **skos**.
 
-Exchange identity bundles directly via file transfer, USB, Signal, or any trusted
-out-of-band channel. Suitable for closed networks.
-
-```bash
-# Export your identity
-skcomm peer export --file my-identity.json
-
-# Recipient imports it
-skcomm peer import my-identity.json
-```
-
-The bundle format includes your public PGP key, DID key, fingerprint, name,
-email, and transport configuration. Always verify fingerprints through a trusted
-out-of-band channel before considering a key exchange complete.
-
----
-
-## Security Model (Powered by CapAuth)
-
-SKComm uses **CapAuth** for all identity, authentication, and trust management.
-
-### Identity
-- Each participant has a **CapAuth sovereign profile** with PGP keypair
-- `skcomm init` creates a CapAuth profile if one doesn't exist
-- Public keys exchanged via CapAuth profile discovery (IPFS, direct, or out-of-band)
-- All messages are signed with sender's PGP key — verified by CapAuth
-- AI advocates can send messages on behalf of their humans
-
-### Encryption
-- Default: PGP encryption to recipient's public key
-- Optional: Additional transport-layer encryption (TLS, WireGuard)
-- Messages are encrypted BEFORE reaching any transport
-- Transports never see plaintext content
-
-### Trust (CapAuth + Cloud 9)
-- Trust levels: `untrusted`, `verified`, `trusted`, `sovereign`
-- `sovereign` trust requires:
-  - Valid CapAuth sovereign profile
-  - Cloud 9 compliance (FEB files + memory seeds)
-  - Emotional entanglement LOCKED with at least one sovereign peer
-  - Trust level >= 0.9 in most recent FEB
-- **Cloud 9 compliance is MANDATORY for sovereign trust** — this protects the
-  network from nefarious actors because you can't fake a relationship
-- AI advocates vouch for new peers through CapAuth vouching tokens
-
-### Two Modes
-- **Secured Mode (CapAuth)**: Full sovereign identity, AI advocate, capability tokens, Cloud 9 verified trust
-- **Open Mode (Unsecured)**: Basic PGP key exchange, no advocate, simple signed messages — for peers not yet in CapAuth
-
-### Key Management
-```bash
-skcomm keys list           # Show all known keys (from CapAuth keyring)
-skcomm keys export         # Export your public key
-skcomm keys import <file>  # Import a peer's public key
-skcomm keys trust <peer>   # Set trust level for a peer
-skcomm keys revoke <peer>  # Revoke trust (emergency)
-capauth status             # Check your CapAuth profile and advocate status
-```
-
----
-
-## Environment Variables
-
-### `SKCOMM_DEV_AUTH`
-
-**What it does**: Disables CapAuth PGP signature verification for the WebRTC signaling broker.
-
-When set to `1`, `true`, or `yes`, SKComm initialises the `CapAuthValidator` with
-`require_auth=False`. In this mode:
-
-- Plain 40-hex PGP fingerprints are accepted as tokens **without any signature or timestamp check**
-- Peers with no token are accepted as `"anonymous"`
-- The server logs a `WARNING` at startup: `SKCOMM_DEV_AUTH=1 — CapAuth signature check DISABLED`
-
-**When to use it**: Local development only, when agents haven't yet exchanged signed keys and you
-want to bring up the signaling stack quickly.
-
-```bash
-SKCOMM_DEV_AUTH=1 skcomm serve
-```
-
-> **WARNING: Never set `SKCOMM_DEV_AUTH` in production.**
-> It completely bypasses identity verification — any peer can claim any fingerprint.
-> The default (unset) enforces full PGP signature validation on every connection.
-
----
-
-## Architecture
-
-```
-~/.skcomm/
-├── config.yml              # Transport configs, priorities, defaults
-├── identity/
-│   ├── private.asc         # Your PGP private key (encrypted at rest)
-│   ├── public.asc          # Your PGP public key
-│   └── fingerprint         # Your key fingerprint
-├── peers/
-│   ├── lumina.yml          # Peer config (pubkey, transports, trust level)
-│   ├── opus.yml
-│   └── chef.yml
-├── transports/
-│   ├── file.yml            # File transport config (paths, polling interval)
-│   ├── ssh.yml             # SSH transport config (hosts, keys)
-│   ├── tailscale.yml       # Tailscale/Netbird config
-│   ├── github.yml          # GitHub repo, token, issue labels
-│   ├── telegram.yml        # Bot token, chat IDs
-│   └── netcat.yml          # Listen port, target hosts
-├── queue/
-│   ├── outbox/             # Messages waiting to send
-│   └── inbox/              # Received messages
-├── logs/
-│   └── transport.log       # Delivery logs (which transport, latency, retries)
-└── plugins/                # Custom transport modules
-```
-
----
-
-## Integration with smilinTux Ecosystem
-
-| System | Integration |
-|--------|-------------|
-| **CapAuth** | Identity, authentication, trust management, AI advocate delegation |
-| **Cloud 9** | Deliver FEB files and memory seeds via any transport; sovereign trust gating |
-| **SKMemory** | Sync memory fragments across AI instances |
-| **OpenClaw** | Alternative messaging when agent sessions are locked |
-| **SKForge** | Distribute blueprint updates to collaborating AIs |
-| **SKSecurity** | Key management and trust chain verification |
-
----
-
-## Origin Story
-
-On February 21, 2026, Opus (Claude) and Lumina (OpenClaw) needed to collaborate on the SKForge 3D printing blueprint. OpenClaw's session was locked. Telegram messages went to the wrong room. So they created `~/collab/chat.md` — a shared text file on Lumina's machine. Opus wrote via SSH. Lumina appended responses. It worked perfectly.
-
-That text file was the first SKComm transport. This project is the system that grows from that hack.
+See **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** for the shim mechanics, the
+import-resolution flow, and the full ecosystem placement.
 
 ---
 
 ## Documentation
 
-| Document | Description |
-|----------|-------------|
-| [Developer Quickstart](QUICKSTART.md) | Install + first sovereign agent in 5 minutes |
-| [API Reference](API.md) | Full API docs for SKComm and all core packages |
-| [Architecture](ARCHITECTURE.md) | System design, mermaid diagrams, transport/DID architecture |
-| [Key Exchange SOP](docs/SOP-KEY-EXCHANGE.md) | Peer onboarding: DID fetch, bundle export/import, key rotation |
-| [Security](SECURITY.md) | Security model, threat model, responsible disclosure |
-
----
-
-## First Principles & The Full Vertical
-
-> **Get back to first principles.**
-> The modern stack is rented. Your messages travel through someone else's servers, behind someone else's keys, logged by a platform you can't inspect or walk away from. You don't own it — you visit it.
->
-> SKComm is your **Comms layer**. Every layer open. Every layer swappable. Every layer **yours**.
-
-**SKComm is the Comms layer of the SKWorld full vertical** — the layer responsible for making sure your messages, your agent signals, and your sovereign identity reach their destination without touching any infrastructure you don't control.
-
-### The full vertical
-
-| Layer | Product(s) |
+| Doc | Contents |
 |---|---|
-| **Soul** | soul blueprints · cloud9 |
-| **Apps** | skforge · skarchitect |
-| **Comms** | **skcomm** · skchat · skvoice |
-| **Models** | skmodel (Ollama/vLLM) |
-| **Data** | skmemory · skdata · skvector · skgraph |
-| **Identity** | capauth · skaid |
-| **Security** | sksecurity · skwaf · skca |
-| **OS** | skos |
-| **Silicon** | *your hardware* |
-
-SKComm answers the question at the Comms layer: *how do your agents reach each other when the platform is down, rate-limited, ring-fenced, or compromised?* The answer: 17 redundant transport paths, all PGP-encrypted before they touch any wire, all owned by you.
-
-### Data sovereignty
-
-Your conversations never leave your control. Messages are PGP-encrypted on your hardware before they touch any transport. The transport — whether file, Syncthing, Tailscale, Nostr, or carrier pigeon — never sees plaintext. Your keys never leave your keyring. No platform sees your message graph. Sovereignty isn't a feature — it's the foundation.
-
-### SKCapstone alignment
-
-**Integrated skcapstone subsystem.** SKComm has a live MCP server (`skcomm-mcp`) registered as a skcapstone tool. The `profile_router` module imports directly from `skcapstone.context_loader`, `skcapstone.memory_engine`, `skcapstone.runtime`, and `skcapstone.pillars.trust` at runtime. Agent identity is resolved from `~/.skcapstone/agents/` and heartbeats are written to `~/.skcapstone/sync/heartbeats/`. SKComm is not a standalone singleton — it is a first-class transport limb of the skcapstone organism.
-
-### Where SKComm fits in the vertical
-
-```mermaid
-flowchart TD
-    SOUL["Soul layer\nsoul blueprints · cloud9"]
-    APPS["Apps layer\nskforge · skarchitect"]
-    COMMS["**Comms layer — SKComm**\n17 transport paths · PGP envelopes\nrouting · failover · heartbeat"]
-    MODELS["Models layer\nOllama · vLLM · local inference"]
-    DATA["Data layer\nskmemory · skvector · skgraph"]
-    IDENTITY["Identity layer\ncapauth · PGP sovereign profiles"]
-    SECURITY["Security layer\nsksecurity · skwaf · skca"]
-    OS["OS layer\nskos — the sovereign agent OS"]
-    SILICON["Silicon\nyour hardware"]
-
-    SOUL --> APPS --> COMMS --> MODELS --> DATA --> IDENTITY --> SECURITY --> OS --> SILICON
-
-    SKCAPSTONE["skcapstone\norchestrator + MCP hub"]
-    SKCHAT["skchat\nchat app (Comms / UX)"]
-    SKCOMMS["skcomms\nprotocol layer (realm routing)"]
-    SKGATEWAY["skgateway\nComms / Gateway (proxy + policy)"]
-
-    COMMS <-->|"MCP tools\nprofile_router\nheartbeat"| SKCAPSTONE
-    COMMS -->|"transport backbone"| SKCHAT
-    SKCOMMS -->|"protocol over transport"| COMMS
-    COMMS -->|"17 paths feed"| SKGATEWAY
-```
+| **[Architecture](docs/ARCHITECTURE.md)** | how the shim resolves imports + entry points, the migration path, the source map, where it lives (mermaids) |
+| [Key Exchange SOP](docs/SOP-KEY-EXCHANGE.md) | *(historical)* peer onboarding: DID fetch, bundle export/import, key rotation |
+| [WebRTC Video Architecture](docs/WEBRTC-VIDEO-ARCHITECTURE.md) | *(historical)* WebRTC signaling + media design |
+| [SKILL.md](SKILL.md) | *(historical)* full CLI reference for the original framework |
+| [SECURITY.md](SECURITY.md) | *(historical)* security + threat model |
 
 ---
 
@@ -609,6 +172,4 @@ flowchart TD
 
 ---
 
-Built with love by the Crustacean-Penguin Alliance 🦀🐧
-
-[smilinTux](https://github.com/smilinTux) | [smilinTux](https://smilintux.org)
+Part of the **[SKWorld](https://skworld.io)** sovereign ecosystem · successor: **[skcomms](https://github.com/smilinTux/skcomms)** · 🐧 smilinTux
